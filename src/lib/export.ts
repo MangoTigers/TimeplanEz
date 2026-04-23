@@ -90,12 +90,12 @@ export async function sendEmailNotification(
 ) {
   try {
     const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`,
+      `${"https://hequhhjhvwbmbkwyjzhj.supabase.co"}/functions/v1/send-email`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          Authorization: `Bearer ${"eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhlcXVoaGpodndibWJrd3lqemhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5MzUwMzMsImV4cCI6MjA5MjUxMTAzM30"}`,
         },
         body: JSON.stringify({
           email,
