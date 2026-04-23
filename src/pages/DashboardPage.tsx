@@ -9,8 +9,8 @@ import { startOfWeek, format, addDays, isSameDay, parseISO } from 'date-fns'
 import { StatCard } from '@/components/common/StatCard'
 import { ShiftListItem } from '@/components/shifts/ShiftListItem'
 import { DurationInput } from '@/components/shifts/DurationInput'
-import { LogHoursForm } from '@/components/shifts/LogHoursForm'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { defaultCategories } from '@/lib/reflections'
 
 export const DashboardPage: React.FC = () => {
   const location = useLocation()
@@ -19,7 +19,6 @@ export const DashboardPage: React.FC = () => {
   const { shifts, setShifts, setLoading, updateShift, deleteShift } = useShiftStore()
   const { settings } = useSettingsStore()
   const toast = useToast()
-  const [isAddModalOpen, setIsAddModalOpen] = React.useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = React.useState(false)
   const [editingShift, setEditingShift] = React.useState<any | null>(null)
   const [editSaving, setEditSaving] = React.useState(false)
@@ -28,17 +27,10 @@ export const DashboardPage: React.FC = () => {
     hours: 0,
     minutes: 0,
     category: 'General',
-    paidStatus: 'unpaid' as 'paid' | 'unpaid' | 'auto',
+    paidStatus: 'unpaid' as 'paid' | 'unpaid',
     notes: '',
   })
   const [selectedDate] = React.useState<Date>(new Date())
-
-  React.useEffect(() => {
-    const params = new URLSearchParams(location.search)
-    if (params.get('log') === 'true') {
-      setIsAddModalOpen(true)
-    }
-  }, [location.search])
 
   React.useEffect(() => {
     if (user) {
@@ -71,6 +63,8 @@ export const DashboardPage: React.FC = () => {
   const thisWeekStart = startOfWeek(selectedDate, { weekStartsOn: 1 })
   const weekShifts = getShiftsForWeek(shifts, selectedDate)
   const schoolHours = settings?.school_hours_per_week || 20
+  const useSchoolHoursMode = settings?.use_school_hours_mode ?? true
+  const categories = settings?.custom_categories?.length ? settings.custom_categories : defaultCategories
   const stats = calculateWeeklyStats(weekShifts, schoolHours)
 
   const todayShifts = shifts.filter((s) =>
@@ -87,7 +81,7 @@ export const DashboardPage: React.FC = () => {
       hours: parts.hours,
       minutes: parts.minutes,
       category: shift.category || 'General',
-      paidStatus: shift.paid === null ? 'auto' : shift.paid ? 'paid' : 'unpaid',
+      paidStatus: shift.paid ? 'paid' : 'unpaid',
       notes: shift.notes || '',
     })
     setIsEditModalOpen(true)
@@ -104,7 +98,7 @@ export const DashboardPage: React.FC = () => {
 
     setEditSaving(true)
     try {
-      const paidValue = editForm.paidStatus === 'auto' ? null : editForm.paidStatus === 'paid'
+      const paidValue = editForm.paidStatus === 'paid'
 
       const payload = {
         date: editForm.date,
@@ -167,7 +161,11 @@ export const DashboardPage: React.FC = () => {
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
           <button
-            onClick={() => setIsAddModalOpen(true)}
+            onClick={() => {
+              const params = new URLSearchParams(location.search)
+              params.set('log', 'true')
+              navigate(`${location.pathname}?${params.toString()}`)
+            }}
             className="btn-primary"
           >
             ➕ Log Hours
@@ -175,10 +173,12 @@ export const DashboardPage: React.FC = () => {
         </div>
 
         {/* This Week Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className={`grid grid-cols-1 ${useSchoolHoursMode ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
           <StatCard label="Total Hours" value={formatHoursMinutes(stats.totalHours)} valueClassName="text-gray-900 dark:text-white" />
           <StatCard label="Paid Hours" value={formatHoursMinutes(stats.paidHours)} valueClassName="text-success-600 dark:text-success-400" />
-          <StatCard label="Unpaid Hours" value={formatHoursMinutes(stats.unpaidHours)} valueClassName="text-warning-600 dark:text-warning-400" />
+          {useSchoolHoursMode && (
+            <StatCard label="Unpaid Hours" value={formatHoursMinutes(stats.unpaidHours)} valueClassName="text-warning-600 dark:text-warning-400" />
+          )}
           <StatCard
             label="Earnings"
             value={formatCurrency(stats.paidHours * (settings?.hourly_rate || 120), settings?.currency || 'NOK')}
@@ -187,27 +187,29 @@ export const DashboardPage: React.FC = () => {
         </div>
 
         {/* School Hours Tracker */}
-        <div className="card">
-          <h2 className="text-lg font-bold mb-4">School Hours This Week</h2>
-          <div className="space-y-3">
-            <div>
-              <div className="flex justify-between mb-2">
-                <span className="text-sm font-medium">{formatHoursMinutes(stats.unpaidHours)} / {formatHoursMinutes(schoolHours)} used</span>
-                <span className="text-sm text-gray-600 dark:text-gray-400">
-                  {formatHoursMinutes(stats.schoolHoursRemaining)} remaining
-                </span>
-              </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
-                <div
-                  className="bg-gradient-to-r from-primary-500 to-primary-600 h-full transition-all duration-300"
-                  style={{
-                    width: `${Math.min((stats.unpaidHours / schoolHours) * 100, 100)}%`,
-                  }}
-                ></div>
+        {useSchoolHoursMode && (
+          <div className="card">
+            <h2 className="text-lg font-bold mb-4">School Hours This Week</h2>
+            <div className="space-y-3">
+              <div>
+                <div className="flex justify-between mb-2">
+                  <span className="text-sm font-medium">{formatHoursMinutes(stats.unpaidHours)} / {formatHoursMinutes(schoolHours)} used</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    {formatHoursMinutes(stats.schoolHoursRemaining)} remaining
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-primary-500 to-primary-600 h-full transition-all duration-300"
+                    style={{
+                      width: `${Math.min((stats.unpaidHours / schoolHours) * 100, 100)}%`,
+                    }}
+                  ></div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Today's Summary */}
         {todayShifts.length > 0 && (
@@ -268,27 +270,6 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
       </div>
-
-      <Modal
-        isOpen={isAddModalOpen}
-        onClose={() => {
-          setIsAddModalOpen(false)
-          if (location.search.includes('log=true')) {
-            navigate('/dashboard', { replace: true })
-          }
-        }}
-        title="Log Hours"
-      >
-        <LogHoursForm
-          onSaved={() => {
-            setIsAddModalOpen(false)
-            if (location.search.includes('log=true')) {
-              navigate('/dashboard', { replace: true })
-            }
-          }}
-        />
-      </Modal>
-
       <Modal
         isOpen={isEditModalOpen}
         onClose={() => {
@@ -341,11 +322,9 @@ export const DashboardPage: React.FC = () => {
               onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
               className="input-base w-full"
             >
-              <option>General</option>
-              <option>Tutoring</option>
-              <option>Event</option>
-              <option>Administration</option>
-              <option>Other</option>
+              {categories.map((category) => (
+                <option key={category}>{category}</option>
+              ))}
             </select>
           </div>
 
@@ -354,11 +333,10 @@ export const DashboardPage: React.FC = () => {
             <select
               value={editForm.paidStatus}
               onChange={(e) =>
-                setEditForm({ ...editForm, paidStatus: e.target.value as 'paid' | 'unpaid' | 'auto' })
+                setEditForm({ ...editForm, paidStatus: e.target.value as 'paid' | 'unpaid' })
               }
               className="input-base w-full"
             >
-              <option value="auto">Auto</option>
               <option value="paid">Paid</option>
               <option value="unpaid">Unpaid</option>
             </select>

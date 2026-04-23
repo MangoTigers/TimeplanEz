@@ -1,8 +1,9 @@
 import React from 'react'
 import { useAuthStore, useSettingsStore } from '@/store'
 import { supabase } from '@/lib/supabase'
-import { useToast } from '@/components/common/UI'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { LogHoursForm } from '@/components/shifts/LogHoursForm'
+import { Modal, useToast } from '@/components/common/UI'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -12,9 +13,25 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { user, logout } = useAuthStore()
   const { settings, updateSettings } = useSettingsStore()
   const toast = useToast()
+  const location = useLocation()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = React.useState(false)
   const [theme, setTheme] = React.useState(settings?.theme || 'light')
+  const isLogModalOpen = new URLSearchParams(location.search).get('log') === 'true'
+
+  const openLogModal = () => {
+    const params = new URLSearchParams(location.search)
+    params.set('log', 'true')
+    navigate(`${location.pathname}?${params.toString()}`)
+    setSidebarOpen(false)
+  }
+
+  const closeLogModal = () => {
+    const params = new URLSearchParams(location.search)
+    params.delete('log')
+    const nextSearch = params.toString()
+    navigate(`${location.pathname}${nextSearch ? `?${nextSearch}` : ''}`, { replace: true })
+  }
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light'
@@ -36,7 +53,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const menuItems = [
     { label: 'Dashboard', href: '/dashboard', icon: '📊' },
-    { label: 'Log Hours', href: '/log-hours', icon: '➕' },
     { label: 'Analytics', href: '/analytics', icon: '📈' },
     { label: 'Reflections', href: '/reflections', icon: '📝' },
     { label: 'Settings', href: '/settings', icon: '⚙️' },
@@ -88,6 +104,14 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             }`}
           >
             <nav className="p-4 space-y-2">
+              <button
+                type="button"
+                onClick={openLogModal}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors text-gray-700 dark:text-slate-200"
+              >
+                <span className="text-xl">➕</span>
+                <span className="font-medium">Log Hours</span>
+              </button>
               {menuItems.map((item) => (
                 <NavLink
                   key={item.href}
@@ -108,6 +132,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           </main>
         </div>
       </div>
+
+      <Modal isOpen={isLogModalOpen} onClose={closeLogModal} title="Log Hours" maxWidthClass="max-w-3xl">
+        <LogHoursForm onSaved={closeLogModal} submitLabel="Save Hours" />
+      </Modal>
     </div>
   )
 }

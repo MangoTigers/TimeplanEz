@@ -7,6 +7,7 @@ const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')
 
 interface RequestBody {
   reflection: string
+  openaiApiKey?: string | null
 }
 
 serve(async (req: Request) => {
@@ -22,7 +23,8 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { reflection } = (await req.json()) as RequestBody
+    const { reflection, openaiApiKey } = (await req.json()) as RequestBody
+    const effectiveApiKey = openaiApiKey?.trim() || OPENAI_API_KEY
 
     if (!reflection || typeof reflection !== 'string') {
       return new Response(
@@ -34,14 +36,13 @@ serve(async (req: Request) => {
       )
     }
 
-    if (!OPENAI_API_KEY) {
+    if (!effectiveApiKey) {
       return new Response(
         JSON.stringify({
           error: 'OpenAI API key not configured',
-          enhanced_text: reflection + '\n\n[Note: Configure OPENAI_API_KEY to enable AI enhancement]',
         }),
         {
-          status: 200,
+          status: 400,
           headers: { 'Content-Type': 'application/json' },
         }
       )
@@ -51,7 +52,7 @@ serve(async (req: Request) => {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${effectiveApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

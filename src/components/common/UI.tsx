@@ -112,9 +112,10 @@ export interface ModalProps {
   title: string
   children: React.ReactNode
   footer?: React.ReactNode
+  maxWidthClass?: string
 }
 
-export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footer }) => {
+export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footer, maxWidthClass = 'max-w-md' }) => {
   if (!isOpen) return null
 
   return (
@@ -123,7 +124,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
         className="fixed inset-0 bg-black/55 dark:bg-black/80"
         onClick={onClose}
       ></div>
-      <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto border border-gray-200 dark:border-slate-700">
+      <div className={`relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl ${maxWidthClass} w-full max-h-[90vh] overflow-y-auto border border-gray-200 dark:border-slate-700`}>
         <div className="sticky top-0 flex items-center justify-between border-b border-gray-200 dark:border-slate-700 p-6 bg-white dark:bg-slate-900">
           <h2 className="text-xl font-bold">{title}</h2>
           <button

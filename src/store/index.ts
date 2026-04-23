@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { defaultCategories } from '@/lib/reflections'
 
 export interface QuickTemplate {
   id: string
@@ -85,11 +86,14 @@ export const useShiftStore = create<ShiftStore>((set) => ({
 interface UserSettingsStore {
   settings: {
     school_hours_per_week: number
+    use_school_hours_mode: boolean
     hourly_rate: number
     currency: string
+    openai_api_key: string
     theme: 'light' | 'dark'
     notifications_enabled: boolean
     email_digest_enabled: boolean
+    custom_categories: string[]
     quick_templates: QuickTemplate[]
   } | null
   setSettings: (settings: any) => void
@@ -102,16 +106,30 @@ export const useSettingsStore = create<UserSettingsStore>()(
     (set) => ({
       settings: {
         school_hours_per_week: 20,
+        use_school_hours_mode: true,
         hourly_rate: 120,
         currency: 'NOK',
+        openai_api_key: '',
         theme: 'light',
         notifications_enabled: true,
         email_digest_enabled: true,
+        custom_categories: defaultCategories,
         quick_templates: defaultQuickTemplates,
       },
       setSettings: (settings) =>
         set({
           settings: {
+            school_hours_per_week: settings?.school_hours_per_week ?? 20,
+            use_school_hours_mode: settings?.use_school_hours_mode ?? true,
+            hourly_rate: settings?.hourly_rate ?? 120,
+            currency: settings?.currency ?? 'NOK',
+            openai_api_key: settings?.openai_api_key ?? '',
+            theme: settings?.theme ?? 'light',
+            notifications_enabled: settings?.notifications_enabled ?? true,
+            email_digest_enabled: settings?.email_digest_enabled ?? true,
+            custom_categories: settings?.custom_categories?.length
+              ? settings.custom_categories
+              : defaultCategories,
             ...settings,
             quick_templates: settings?.quick_templates?.length
               ? settings.quick_templates

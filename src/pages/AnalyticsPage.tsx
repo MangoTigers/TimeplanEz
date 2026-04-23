@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useToast } from '@/components/common/UI'
 import { Modal } from '@/components/common/UI'
 import { formatHoursMinutes } from '@/lib/calculations'
+import { parseReflection } from '@/lib/reflections'
 import { StatCard } from '@/components/common/StatCard'
 import { ShiftTable } from '@/components/shifts/ShiftTable'
 import {
@@ -23,6 +24,22 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, parseISO } from 'date-fns'
+
+interface DayExportRow {
+  date: string
+  totalHours: number
+  paidHours: number
+  unpaidHours: number
+  status: string
+  categories: string[]
+  notes: string
+  reflectionTaskCompleted: string
+  reflectionHowItWent: string
+  reflectionCompletedPlannedWork: string
+  reflectionNeededHelp: string
+  reflectionLearnedSomething: string
+  enhancedReflection: string
+}
 
 export const AnalyticsPage: React.FC = () => {
   const { user } = useAuthStore()
@@ -123,23 +140,85 @@ export const AnalyticsPage: React.FC = () => {
 
   const COLORS = ['#0ea5e9', '#22c55e', '#eab308', '#f59e0b', '#ef4444', '#8b5cf6']
 
+  const dayExportRows = React.useMemo<DayExportRow[]>(() => {
+    const grouped = new Map<string, typeof monthShifts>()
+
+    monthShifts.forEach((shift) => {
+      const next = grouped.get(shift.date) || []
+      next.push(shift)
+      grouped.set(shift.date, next)
+    })
+
+    return Array.from(grouped.entries())
+      .map(([date, dayShifts]) => {
+        const totalHours = dayShifts.reduce((sum, shift) => sum + shift.hours_worked, 0)
+        const paidHours = dayShifts.filter((shift) => shift.paid).reduce((sum, shift) => sum + shift.hours_worked, 0)
+        const unpaidHours = totalHours - paidHours
+        const reflectionSource = dayShifts.find((shift) => Boolean(shift.reflection))
+        const reflection = parseReflection(reflectionSource?.reflection || null)
+
+        return {
+          date,
+          totalHours,
+          paidHours,
+          unpaidHours,
+          status: paidHours > 0 && unpaidHours > 0 ? 'Mixed' : paidHours > 0 ? 'Paid' : 'Unpaid',
+          categories: Array.from(new Set(dayShifts.map((shift) => shift.category || 'General'))),
+          notes: Array.from(
+            new Set(dayShifts.map((shift) => shift.notes?.trim()).filter(Boolean) as string[])
+          ).join(' | '),
+          reflectionTaskCompleted: reflection.taskCompleted,
+          reflectionHowItWent: reflection.howItWent,
+          reflectionCompletedPlannedWork: reflection.checklist.completedPlannedWork ? 'Yes' : 'No',
+          reflectionNeededHelp: reflection.checklist.neededHelp ? 'Yes' : 'No',
+          reflectionLearnedSomething: reflection.checklist.learnedSomething ? 'Yes' : 'No',
+          enhancedReflection: reflectionSource?.enhanced_reflection || '',
+        }
+      })
+      .sort((a, b) => (a.date < b.date ? 1 : -1))
+  }, [monthShifts])
+
   const handleExportCSV = () => {
-    const headers = ['Date', 'Hours', 'Status', 'Category', 'Notes']
-    const rows = monthShifts.map((shift) => [
-      format(parseISO(shift.date), 'yyyy-MM-dd'),
-      shift.hours_worked,
-      shift.paid ? 'Paid' : 'Unpaid',
-      shift.category || '-',
-      shift.notes || '',
+    const headers = [
+      'Date',
+      'Total Hours',
+      'Paid Hours',
+      'Unpaid Hours',
+      'Status',
+      'Categories',
+      'Notes',
+      'Reflection Task Completed',
+      'Reflection How It Went',
+      'Reflection Completed Planned Work',
+      'Reflection Needed Help',
+      'Reflection Learned Something',
+      'Enhanced Reflection',
+    ]
+
+    const rows = dayExportRows.map((day) => [
+      format(parseISO(day.date), 'yyyy-MM-dd'),
+      day.totalHours,
+      day.paidHours,
+      day.unpaidHours,
+      day.status,
+      day.categories.join(' • '),
+      day.notes,
+      day.reflectionTaskCompleted,
+      day.reflectionHowItWent,
+      day.reflectionCompletedPlannedWork,
+      day.reflectionNeededHelp,
+      day.reflectionLearnedSomething,
+      day.enhancedReflection,
     ])
+
+    const toCsvCell = (value: string | number | boolean | null | undefined) => {
+      const text = String(value ?? '')
+      return `"${text.replace(/"/g, '""')}"`
+    }
 
     const csv = [
       headers.join(','),
-      ...rows.map((row) =>
-        row
-          .map((cell) => (typeof cell === 'string' && cell.includes(',') ? `"${cell}"` : cell))
-          .join(',')
-      ),
+      ...rows.map((row) => row.map((cell) => toCsvCell(cell)).join(',')),
     ].join('\n')
 
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -287,7 +366,7 @@ export const AnalyticsPage: React.FC = () => {
         <div className="space-y-4">
           <p>Export your data for {format(selectedMonth, 'MMMM yyyy')}</p>
           <div className="bg-primary-50 dark:bg-primary-900/20 p-3 rounded-lg text-sm text-primary-900 dark:text-primary-200">
-            The CSV file will include all shifts, hours, paid/unpaid status, and categories for easy analysis.
+            The CSV file will include one row per day with total hours, paid/unpaid hours, categories, notes, and the shared reflection columns in one report.
           </div>
         </div>
       </Modal>

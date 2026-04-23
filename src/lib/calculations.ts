@@ -17,8 +17,11 @@ export interface UserSettings {
   id: string
   user_id: string
   school_hours_per_week: number
+  use_school_hours_mode: boolean
   hourly_rate: number
   currency: string
+  openai_api_key?: string | null
+  custom_categories?: string[]
   theme: 'light' | 'dark'
   notifications_enabled: boolean
   email_digest_enabled: boolean

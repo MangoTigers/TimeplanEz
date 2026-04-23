@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { format, startOfWeek, parseISO } from 'date-fns'
 import { partsToHours, hoursToParts, formatHoursMinutes } from '@/lib/calculations'
 import { DurationInput } from './DurationInput'
+import { defaultCategories, defaultReflectionChecklist, hasReflectionContent, serializeReflection } from '@/lib/reflections'
 
 interface LogHoursFormProps {
   onSaved?: () => void
@@ -17,9 +18,12 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
   submitLabel = '✓ Log Hours',
 }) => {
   const { user } = useAuthStore()
-  const { addShift, shifts } = useShiftStore()
+  const { addShift, shifts, setShifts } = useShiftStore()
   const { settings } = useSettingsStore()
   const toast = useToast()
+  const useSchoolHoursMode = settings?.use_school_hours_mode ?? true
+  const categories = settings?.custom_categories?.length ? settings.custom_categories : defaultCategories
+  type PaidStatus = 'auto' | 'paid' | 'unpaid'
   const [loading, setLoading] = React.useState(false)
   const [formData, setFormData] = React.useState({
     date: format(new Date(), 'yyyy-MM-dd'),
@@ -27,10 +31,24 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
     toTime: '',
     hours: 0,
     minutes: 0,
-    category: 'General',
+    category: categories[0] || 'General',
     notes: '',
-    paidStatus: 'auto', // 'auto', 'paid', 'unpaid'
+    paidStatus: (useSchoolHoursMode ? 'auto' : 'paid') as PaidStatus,
+    reflectionTaskCompleted: '',
+    reflectionHowItWent: '',
+    checklistCompletedPlannedWork: false,
+    checklistNeededHelp: false,
+    checklistLearnedSomething: false,
   })
+
+  React.useEffect(() => {
+    if (!useSchoolHoursMode && formData.paidStatus === 'auto') {
+      setFormData((prev) => ({ ...prev, paidStatus: 'paid' }))
+    }
+    if (useSchoolHoursMode && formData.paidStatus !== 'auto') {
+      setFormData((prev) => ({ ...prev, paidStatus: 'auto' }))
+    }
+  }, [formData.paidStatus, useSchoolHoursMode])
 
   const parseTimeToMinutes = (time: string): number | null => {
     if (!time || !time.includes(':')) return null
@@ -91,6 +109,33 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
         return shiftDate >= weekStart && shiftDate < new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000)
       })
 
+      const reflectionPayload = {
+        taskCompleted: formData.reflectionTaskCompleted.trim(),
+        howItWent: formData.reflectionHowItWent.trim(),
+        checklist: {
+          completedPlannedWork: formData.checklistCompletedPlannedWork,
+          neededHelp: formData.checklistNeededHelp,
+          learnedSomething: formData.checklistLearnedSomething,
+        },
+      }
+      const hasNewReflectionForDay = hasReflectionContent(reflectionPayload)
+
+      const { data: existingDayRefRows, error: existingDayRefError } = await supabase
+        .from('shifts')
+        .select('reflection')
+        .eq('user_id', user.id)
+        .eq('date', formData.date)
+        .not('reflection', 'is', null)
+        .limit(1)
+
+      if (existingDayRefError) throw existingDayRefError
+
+      const existingDayReflection = existingDayRefRows?.[0]?.reflection ?? null
+
+      const reflectionValue = hasNewReflectionForDay
+        ? serializeReflection(reflectionPayload)
+        : existingDayReflection
+
       const shiftsToInsert: Array<{
         id: string
         user_id: string
@@ -99,21 +144,21 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
         paid: boolean
         category: string
         notes: string | null
-        reflection: null
+        reflection: string | null
         created_at: string
         updated_at: string
       }> = []
 
-      if (formData.paidStatus === 'paid' || formData.paidStatus === 'unpaid') {
+      if (!useSchoolHoursMode || formData.paidStatus === 'paid' || formData.paidStatus === 'unpaid') {
         shiftsToInsert.push({
           id: uuidv4(),
           user_id: user.id,
           date: formData.date,
           hours_worked: workedHours,
-          paid: formData.paidStatus === 'paid',
+          paid: !useSchoolHoursMode ? true : formData.paidStatus === 'paid',
           category: formData.category,
           notes: formData.notes || null,
-          reflection: null,
+          reflection: reflectionValue,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -135,7 +180,7 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
             paid: false,
             category: formData.category,
             notes: formData.notes || null,
-            reflection: null,
+            reflection: reflectionValue,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
@@ -150,7 +195,7 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
             paid: true,
             category: formData.category,
             notes: formData.notes || null,
-            reflection: null,
+            reflection: reflectionValue,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
@@ -159,6 +204,22 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
 
       const { error } = await supabase.from('shifts').insert(shiftsToInsert)
       if (error) throw error
+
+      if (hasNewReflectionForDay && reflectionValue) {
+        const { error: syncReflectionError } = await supabase
+          .from('shifts')
+          .update({ reflection: reflectionValue })
+          .eq('user_id', user.id)
+          .eq('date', formData.date)
+
+        if (syncReflectionError) throw syncReflectionError
+
+        setShifts(
+          shifts.map((shift) =>
+            shift.date === formData.date ? { ...shift, reflection: reflectionValue } : shift
+          )
+        )
+      }
 
       shiftsToInsert.forEach((shift) => addShift(shift))
 
@@ -177,9 +238,14 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
         toTime: '',
         hours: 0,
         minutes: 0,
-        category: 'General',
+        category: categories[0] || 'General',
         notes: '',
-        paidStatus: 'auto',
+        paidStatus: useSchoolHoursMode ? 'auto' : 'paid',
+        reflectionTaskCompleted: '',
+        reflectionHowItWent: '',
+        checklistCompletedPlannedWork: defaultReflectionChecklist.completedPlannedWork,
+        checklistNeededHelp: defaultReflectionChecklist.neededHelp,
+        checklistLearnedSomething: defaultReflectionChecklist.learnedSomething,
       })
 
       onSaved?.()
@@ -255,25 +321,23 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
           onChange={(e) => setFormData({ ...formData, category: e.target.value })}
           className="input-base w-full"
         >
-          <option>General</option>
-          <option>Tutoring</option>
-          <option>Event</option>
-          <option>Administration</option>
-          <option>Other</option>
+          {categories.map((category) => (
+            <option key={category}>{category}</option>
+          ))}
         </select>
       </div>
 
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Paid Status</label>
         <div className="space-y-3">
-          {(['auto', 'paid', 'unpaid'] as const).map((status) => {
+          {((useSchoolHoursMode ? ['auto', 'paid', 'unpaid'] : ['paid', 'unpaid']) as PaidStatus[]).map((status) => {
             const label = status === 'auto' ? 'Auto-Calculate' : status === 'paid' ? 'Mark as Paid' : 'Mark as Unpaid'
             const description =
               status === 'auto'
                 ? `Based on school hours per week (${formatHoursMinutes(settings?.school_hours_per_week || 20)})`
                 : status === 'paid'
-                  ? 'Override - count towards earnings'
-                  : 'Override - counts towards school hours'
+                  ? 'Count towards earnings'
+                  : 'Does not count towards earnings'
             const borderColor =
               formData.paidStatus === status
                 ? status === 'auto'
@@ -294,7 +358,7 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
                   name="paidStatus"
                   value={status}
                   checked={formData.paidStatus === status}
-                  onChange={(e) => setFormData({ ...formData, paidStatus: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, paidStatus: e.target.value as PaidStatus })}
                 />
                 <div>
                   <p className="font-medium text-gray-900 dark:text-gray-100">{label}</p>
@@ -314,6 +378,58 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
           className="input-base w-full h-24 resize-none"
           placeholder="Add any notes about this shift..."
         ></textarea>
+      </div>
+
+      <div className="card">
+        <h2 className="text-sm font-semibold mb-3 text-gray-900 dark:text-gray-100">Reflection (Optional)</h2>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Task Completed</label>
+            <textarea
+              value={formData.reflectionTaskCompleted}
+              onChange={(e) => setFormData({ ...formData, reflectionTaskCompleted: e.target.value })}
+              className="input-base w-full h-20 resize-none"
+              placeholder="What tasks did you complete?"
+            ></textarea>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">How It Went</label>
+            <textarea
+              value={formData.reflectionHowItWent}
+              onChange={(e) => setFormData({ ...formData, reflectionHowItWent: e.target.value })}
+              className="input-base w-full h-20 resize-none"
+              placeholder="How did the shift go?"
+            ></textarea>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={formData.checklistCompletedPlannedWork}
+                onChange={(e) => setFormData({ ...formData, checklistCompletedPlannedWork: e.target.checked })}
+              />
+              Completed planned work
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={formData.checklistNeededHelp}
+                onChange={(e) => setFormData({ ...formData, checklistNeededHelp: e.target.checked })}
+              />
+              Needed help
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={formData.checklistLearnedSomething}
+                onChange={(e) => setFormData({ ...formData, checklistLearnedSomething: e.target.checked })}
+              />
+              Learned something new
+            </label>
+          </div>
+        </div>
       </div>
 
       <button type="submit" disabled={loading} className="btn-primary w-full">
