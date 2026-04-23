@@ -64,9 +64,6 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 }
 
 export default function App() {
-  const rawBase = import.meta.env.BASE_URL || '/'
-  const routerBase = rawBase === '/' ? '/' : rawBase.replace(/\/$/, '')
-
   if (!isSupabaseConfigured) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-950 p-6">
@@ -88,7 +85,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
   }
 
   return (
-    <HashRouter basename={routerBase}>
+    <HashRouter>
       <ToastProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -133,6 +130,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
             }
           />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </ToastProvider>
     </HashRouter>
