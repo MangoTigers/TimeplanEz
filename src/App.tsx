@@ -1,8 +1,8 @@
 import React from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ToastProvider } from '@/components/common/UI'
-import { useAuthStore } from '@/store'
-import { supabase, isSupabaseConfigured } from '@/lib/supabase'
+import { useAuthStore, useSettingsStore } from '@/store'
+import { getUserProfile, supabase, isSupabaseConfigured } from '@/lib/supabase'
 
 // Pages
 import { LoginPage } from '@/pages/LoginPage'
@@ -13,10 +13,20 @@ import { ReflectionsPage } from '@/pages/ReflectionsPage'
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, setUser, setSession } = useAuthStore()
+  const { setSettings } = useSettingsStore()
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
     let isMounted = true
+
+    const syncUserProfile = async (userId: string) => {
+      const profile = await getUserProfile(userId)
+      if (!isMounted) {
+        return
+      }
+
+      setSettings(profile)
+    }
 
     const initializeAuth = async () => {
       const {
@@ -29,6 +39,11 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
       setSession(session)
       setUser(session?.user ?? null)
+
+      if (session?.user) {
+        await syncUserProfile(session.user.id)
+      }
+
       setLoading(false)
     }
 
@@ -43,6 +58,13 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
       setUser(session?.user ?? null)
+
+      if (session?.user) {
+        syncUserProfile(session.user.id).catch(() => {
+          // Keep the app usable with local defaults if the profile fetch fails.
+        })
+      }
+
       setLoading(false)
     })
 
@@ -50,7 +72,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
       isMounted = false
       subscription.unsubscribe()
     }
-  }, [setSession, setUser])
+  }, [setSession, setSettings, setUser])
 
   if (loading) {
     return <div>Loading...</div>

@@ -1,6 +1,6 @@
 import React from 'react'
 import { Layout } from '@/components/Layout'
-import { useSettingsStore, useAuthStore, QuickTemplate } from '@/store'
+import { useSettingsStore, useAuthStore, useShiftStore, QuickTemplate } from '@/store'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/components/common/UI'
 import { partsToHours, hoursToParts, formatHoursMinutes } from '@/lib/calculations'
@@ -16,9 +16,12 @@ interface SettingsFormData {
 
 export const SettingsPage: React.FC = () => {
   const { user } = useAuthStore()
+  const { shifts, setShifts } = useShiftStore()
   const { settings, updateSettings, setQuickTemplates } = useSettingsStore()
   const toast = useToast()
   const [loading, setLoading] = React.useState(false)
+  const [deleteBeforeDate, setDeleteBeforeDate] = React.useState('')
+  const [deletingLogs, setDeletingLogs] = React.useState(false)
   const [templateLabel, setTemplateLabel] = React.useState('')
   const [templateHours, setTemplateHours] = React.useState(0)
   const [templateMinutes, setTemplateMinutes] = React.useState(0)
@@ -29,6 +32,20 @@ export const SettingsPage: React.FC = () => {
     notifications_enabled: settings?.notifications_enabled || true,
     email_digest_enabled: settings?.email_digest_enabled || true,
   })
+
+  React.useEffect(() => {
+    if (!settings) {
+      return
+    }
+
+    setFormData({
+      school_hours_per_week: settings.school_hours_per_week,
+      hourly_rate: settings.hourly_rate,
+      currency: settings.currency,
+      notifications_enabled: settings.notifications_enabled,
+      email_digest_enabled: settings.email_digest_enabled,
+    })
+  }, [settings])
 
   const schoolHoursParts = hoursToParts(formData.school_hours_per_week)
 
@@ -82,6 +99,39 @@ export const SettingsPage: React.FC = () => {
       toast.showToast({ type: 'error', message: error.message })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleDeleteOldLogs = async () => {
+    if (!user || !deleteBeforeDate) {
+      toast.showToast({ type: 'warning', message: 'Pick a cutoff date first.' })
+      return
+    }
+
+    setDeletingLogs(true)
+
+    try {
+      const { data, error } = await supabase
+        .from('shifts')
+        .delete()
+        .eq('user_id', user.id)
+        .lt('date', deleteBeforeDate)
+        .select('id')
+
+      if (error) throw error
+
+      const deletedIds = new Set((data || []).map((shift) => shift.id))
+      setShifts(shifts.filter((shift) => !deletedIds.has(shift.id)))
+
+      toast.showToast({
+        type: 'success',
+        message: `Deleted ${deletedIds.size} old log${deletedIds.size === 1 ? '' : 's'}.`,
+      })
+      setDeleteBeforeDate('')
+    } catch (error: any) {
+      toast.showToast({ type: 'error', message: error.message || 'Failed to delete old logs.' })
+    } finally {
+      setDeletingLogs(false)
     }
   }
 
@@ -269,6 +319,35 @@ export const SettingsPage: React.FC = () => {
                 {user?.created_at ? new Date(user.created_at).toLocaleDateString('nb-NO') : 'N/A'}
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* Log Cleanup */}
+        <div className="card border border-danger-200 dark:border-danger-900/40 bg-danger-50/60 dark:bg-danger-900/10">
+          <h2 className="text-xl font-bold mb-3 text-danger-700 dark:text-danger-300">Delete Old Logs</h2>
+          <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
+            Remove all shifts logged before a selected date. This only affects your own logs.
+          </p>
+          <div className="flex flex-col md:flex-row md:items-end gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Delete logs before
+              </label>
+              <input
+                type="date"
+                value={deleteBeforeDate}
+                onChange={(e) => setDeleteBeforeDate(e.target.value)}
+                className="input-base w-full md:w-56"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleDeleteOldLogs}
+              disabled={deletingLogs || !deleteBeforeDate}
+              className="btn-danger"
+            >
+              {deletingLogs ? 'Deleting...' : 'Delete Old Logs'}
+            </button>
           </div>
         </div>
 

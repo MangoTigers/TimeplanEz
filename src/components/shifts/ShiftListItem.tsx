@@ -13,9 +13,10 @@ interface ShiftListItemProps {
   }
   showDate?: boolean
   onEdit?: () => void
+  onDelete?: () => void
 }
 
-export const ShiftListItem: React.FC<ShiftListItemProps> = ({ shift, showDate = true, onEdit }) => {
+export const ShiftListItem: React.FC<ShiftListItemProps> = ({ shift, showDate = true, onEdit, onDelete }) => {
   return (
     <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
       <div>
@@ -34,6 +35,11 @@ export const ShiftListItem: React.FC<ShiftListItemProps> = ({ shift, showDate = 
         {onEdit && (
           <button onClick={onEdit} className="btn-secondary px-3 py-1 text-xs">
             Edit
+          </button>
+        )}
+        {onDelete && (
+          <button onClick={onDelete} className="btn-danger px-3 py-1 text-xs">
+            Delete
           </button>
         )}
       </div>

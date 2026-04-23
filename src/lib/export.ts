@@ -42,7 +42,7 @@ export async function generatePDFReport(
 
   const doc = new jsPDF()
   doc.setFontSize(24)
-  doc.text('TimeplanEz - Earnings Report', 20, 20)
+  doc.text('EzTimeplan - Earnings Report', 20, 20)
   doc.setFontSize(10)
   doc.text(`Generated: ${new Date().toLocaleDateString('nb-NO')}`, 20, 30)
   doc.text(`User: ${userName}`, 20, 40)
@@ -76,7 +76,7 @@ export async function generatePDFReport(
     }
   })
 
-  doc.save(`timeplanez-report-${new Date().toISOString().split('T')[0]}.pdf`)
+  doc.save(`eztimeplan-report-${new Date().toISOString().split('T')[0]}.pdf`)
 }
 
 /**

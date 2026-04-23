@@ -5,7 +5,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE users (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL UNIQUE,
-  school_hours_per_week INTEGER NOT NULL DEFAULT 20,
+  school_hours_per_week NUMERIC(5, 2) NOT NULL DEFAULT 20,
   hourly_rate DECIMAL(10, 2) NOT NULL DEFAULT 120.00,
   currency TEXT NOT NULL DEFAULT 'NOK',
   theme TEXT DEFAULT 'light',

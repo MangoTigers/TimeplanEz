@@ -16,6 +16,7 @@ interface ShiftTableProps {
   currency: string
   hourlyRate: number
   maxRows?: number
+  onDeleteShift?: (shiftId: string) => void
 }
 
 export const ShiftTable: React.FC<ShiftTableProps> = ({
@@ -23,6 +24,7 @@ export const ShiftTable: React.FC<ShiftTableProps> = ({
   currency,
   hourlyRate,
   maxRows = 20,
+  onDeleteShift,
 }) => {
   return (
     <div className="overflow-x-auto">
@@ -34,6 +36,7 @@ export const ShiftTable: React.FC<ShiftTableProps> = ({
             <th className="text-left px-4 py-3 font-medium">Status</th>
             <th className="text-left px-4 py-3 font-medium">Category</th>
             <th className="text-right px-4 py-3 font-medium">Earnings</th>
+            {onDeleteShift && <th className="text-right px-4 py-3 font-medium">Actions</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -48,6 +51,13 @@ export const ShiftTable: React.FC<ShiftTableProps> = ({
               <td className="px-4 py-3 text-right">
                 {shift.paid ? `${currency} ${(shift.hours_worked * hourlyRate).toFixed(0)}` : '-'}
               </td>
+              {onDeleteShift && (
+                <td className="px-4 py-3 text-right">
+                  <button onClick={() => onDeleteShift(shift.id)} className="btn-danger px-3 py-1 text-xs">
+                    Delete
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

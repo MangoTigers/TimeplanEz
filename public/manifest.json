@@ -1,6 +1,6 @@
 {
-  "name": "TimeplanEz - Hours Tracker",
-  "short_name": "TimeplanEz",
+  "name": "EzTimeplan - Hours Tracker",
+  "short_name": "EzTimeplan",
   "description": "Track your work hours with ease. Manage paid and unpaid school hours, track earnings, and generate reports.",
   "start_url": "/TimeplanEz/",
   "scope": "/TimeplanEz/",

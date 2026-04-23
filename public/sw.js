@@ -1,4 +1,4 @@
-const CACHE_NAME = 'timeplanez-v1';
+const CACHE_NAME = 'eztimeplan-v1';
 const ASSETS_TO_CACHE = [
   '/TimeplanEz/',
   '/TimeplanEz/index.html',

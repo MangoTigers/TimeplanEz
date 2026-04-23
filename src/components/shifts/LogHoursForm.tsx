@@ -1,6 +1,6 @@
 import React from 'react'
 import { useShiftStore, useSettingsStore, useAuthStore } from '@/store'
-import { supabase, ensureUserProfile } from '@/lib/supabase'
+import { supabase, ensureUserProfile, getUserProfile } from '@/lib/supabase'
 import { useToast } from '@/components/common/UI'
 import { v4 as uuidv4 } from 'uuid'
 import { format, startOfWeek, parseISO } from 'date-fns'
@@ -82,6 +82,9 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
     try {
       await ensureUserProfile(user)
 
+      const profile = await getUserProfile(user.id)
+      const effectiveSchoolHours = Number(profile?.school_hours_per_week ?? settings?.school_hours_per_week ?? 20)
+
       const weekStart = startOfWeek(new Date(formData.date), { weekStartsOn: 1 })
       const weekShifts = shifts.filter((s) => {
         const shiftDate = parseISO(s.date)
@@ -115,12 +118,11 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
           updated_at: new Date().toISOString(),
         })
       } else {
-        const schoolHours = settings?.school_hours_per_week || 20
         const unpaidHoursUsed = weekShifts
           .filter((s) => s.paid === false)
           .reduce((sum, s) => sum + s.hours_worked, 0)
 
-        const remainingSchoolHours = Math.max(0, schoolHours - unpaidHoursUsed)
+        const remainingSchoolHours = Math.max(0, effectiveSchoolHours - unpaidHoursUsed)
         const unpaidPart = Math.min(workedHours, remainingSchoolHours)
         const paidPart = Math.max(0, workedHours - unpaidPart)
 

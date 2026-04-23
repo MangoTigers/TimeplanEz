@@ -55,7 +55,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               >
                 ☰
               </button>
-              <h1 className="text-xl font-bold text-primary-600 dark:text-primary-400">TimeplanEz</h1>
+              <h1 className="text-xl font-bold text-primary-600 dark:text-primary-400">EzTimeplan</h1>
             </div>
 
             <div className="flex items-center gap-4">

@@ -16,7 +16,7 @@ export const DashboardPage: React.FC = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { shifts, setShifts, setLoading, updateShift } = useShiftStore()
+  const { shifts, setShifts, setLoading, updateShift, deleteShift } = useShiftStore()
   const { settings } = useSettingsStore()
   const toast = useToast()
   const [isAddModalOpen, setIsAddModalOpen] = React.useState(false)
@@ -136,6 +136,30 @@ export const DashboardPage: React.FC = () => {
     }
   }
 
+  const handleDeleteShift = async (shiftId: string) => {
+    if (!user) return
+
+    const confirmed = window.confirm('Delete this shift? This cannot be undone.')
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from('shifts')
+        .delete()
+        .eq('id', shiftId)
+        .eq('user_id', user.id)
+
+      if (error) throw error
+
+      deleteShift(shiftId)
+      toast.showToast({ type: 'success', message: 'Shift deleted successfully.' })
+    } catch (error: any) {
+      toast.showToast({ type: 'error', message: error.message || 'Failed to delete shift.' })
+    }
+  }
+
   return (
     <Layout>
       <div className="space-y-8">
@@ -191,7 +215,13 @@ export const DashboardPage: React.FC = () => {
             <h2 className="text-lg font-bold mb-4">Today's Shifts</h2>
             <div className="space-y-2">
               {todayShifts.map((shift) => (
-                <ShiftListItem key={shift.id} shift={shift} showDate={false} onEdit={() => openEditModal(shift)} />
+                <ShiftListItem
+                  key={shift.id}
+                  shift={shift}
+                  showDate={false}
+                  onEdit={() => openEditModal(shift)}
+                  onDelete={() => handleDeleteShift(shift.id)}
+                />
               ))}
             </div>
           </div>
@@ -228,7 +258,12 @@ export const DashboardPage: React.FC = () => {
           <h2 className="text-lg font-bold mb-4">Recent Shifts</h2>
           <div className="space-y-2">
             {shifts.slice(0, 5).map((shift) => (
-              <ShiftListItem key={shift.id} shift={shift} onEdit={() => openEditModal(shift)} />
+              <ShiftListItem
+                key={shift.id}
+                shift={shift}
+                onEdit={() => openEditModal(shift)}
+                onDelete={() => handleDeleteShift(shift.id)}
+              />
             ))}
           </div>
         </div>

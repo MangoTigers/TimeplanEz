@@ -26,7 +26,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, parseISO } from 'd
 
 export const AnalyticsPage: React.FC = () => {
   const { user } = useAuthStore()
-  const { shifts, setShifts } = useShiftStore()
+  const { shifts, setShifts, deleteShift } = useShiftStore()
   const { settings } = useSettingsStore()
   const toast = useToast()
   const [selectedMonth, setSelectedMonth] = React.useState(new Date())
@@ -52,6 +52,30 @@ export const AnalyticsPage: React.FC = () => {
       setShifts(data || [])
     } catch (error: any) {
       toast.showToast({ type: 'error', message: 'Failed to load shifts' })
+    }
+  }
+
+  const handleDeleteShift = async (shiftId: string) => {
+    if (!user) return
+
+    const confirmed = window.confirm('Delete this shift? This cannot be undone.')
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from('shifts')
+        .delete()
+        .eq('id', shiftId)
+        .eq('user_id', user.id)
+
+      if (error) throw error
+
+      deleteShift(shiftId)
+      toast.showToast({ type: 'success', message: 'Shift deleted successfully.' })
+    } catch (error: any) {
+      toast.showToast({ type: 'error', message: error.message || 'Failed to delete shift.' })
     }
   }
 
@@ -122,7 +146,7 @@ export const AnalyticsPage: React.FC = () => {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `timeplanez-${format(selectedMonth, 'yyyy-MM')}.csv`
+    link.download = `eztimeplan-${format(selectedMonth, 'yyyy-MM')}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -238,6 +262,7 @@ export const AnalyticsPage: React.FC = () => {
               shifts={monthShifts}
               currency={settings?.currency || 'NOK'}
               hourlyRate={settings?.hourly_rate || 120}
+              onDeleteShift={handleDeleteShift}
             />
           </div>
         )}
