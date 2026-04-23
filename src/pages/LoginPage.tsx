@@ -46,9 +46,15 @@ export const LoginPage: React.FC = () => {
 
         if (error) throw error
 
-        if (data.user) {
+        if (data.user && data.session) {
+          // When email confirmation is disabled, signup can return an active session immediately.
           await ensureUserProfile(data.user)
-
+          setUser(data.user)
+          setSession(data.session)
+          toast.showToast({ type: 'success', message: 'Account created and logged in!' })
+          navigate('/dashboard')
+        } else {
+          // With email confirmation enabled, the profile row is created by DB trigger after auth user creation.
           toast.showToast({
             type: 'success',
             message: 'Account created! Please check your email to confirm.',
