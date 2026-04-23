@@ -4,6 +4,8 @@ import { useShiftStore, useAuthStore } from '@/store'
 import { supabase } from '@/lib/supabase'
 import { useToast, Modal } from '@/components/common/UI'
 import { format, parseISO } from 'date-fns'
+import { formatHoursMinutes } from '@/lib/calculations'
+import { ShiftStatusBadge } from '@/components/shifts/ShiftStatusBadge'
 
 interface ShiftWithReflection {
   id: string
@@ -169,12 +171,10 @@ export const ReflectionsPage: React.FC = () => {
                   <div>
                     <p className="font-medium">{format(parseISO(reflection.date), 'MMMM dd, yyyy')}</p>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                      {reflection.hours_worked}h • {reflection.category}
+                      {formatHoursMinutes(reflection.hours_worked)} • {reflection.category}
                     </p>
                   </div>
-                  <span className={`badge ${reflection.paid ? 'badge-success' : 'badge-warning'}`}>
-                    {reflection.paid ? 'Paid' : 'Unpaid'}
-                  </span>
+                  <ShiftStatusBadge paid={reflection.paid} />
                 </div>
                 <p className="text-gray-700 dark:text-gray-300 line-clamp-2">
                   {reflection.reflection}
@@ -286,7 +286,7 @@ export const ReflectionsPage: React.FC = () => {
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Hours & Status</p>
               <p className="font-medium">
-                {selectedReflection.hours_worked}h •{' '}
+                {formatHoursMinutes(selectedReflection.hours_worked)} •{' '}
                 <span className={selectedReflection.paid ? 'text-success-600' : 'text-warning-600'}>
                   {selectedReflection.paid ? 'Paid' : 'Unpaid'}
                 </span>

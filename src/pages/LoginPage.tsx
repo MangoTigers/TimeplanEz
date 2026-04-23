@@ -1,5 +1,5 @@
 import React from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, ensureUserProfile } from '@/lib/supabase'
 import { useAuthStore } from '@/store'
 import { useToast } from '@/components/common/UI'
 import { useNavigate } from 'react-router-dom'
@@ -47,16 +47,7 @@ export const LoginPage: React.FC = () => {
         if (error) throw error
 
         if (data.user) {
-          // Create user profile
-          const { error: profileError } = await supabase.from('users').insert({
-            id: data.user.id,
-            email: data.user.email,
-            school_hours_per_week: 20,
-            hourly_rate: 120,
-            currency: 'NOK',
-          })
-
-          if (profileError) throw profileError
+          await ensureUserProfile(data.user)
 
           toast.showToast({
             type: 'success',
@@ -72,6 +63,7 @@ export const LoginPage: React.FC = () => {
         if (error) throw error
 
         if (data.user && data.session) {
+          await ensureUserProfile(data.user)
           setUser(data.user)
           setSession(data.session)
           toast.showToast({ type: 'success', message: 'Logged in successfully!' })

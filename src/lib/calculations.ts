@@ -134,3 +134,48 @@ export function calculateEarnings(paidHours: number, hourlyRate: number): number
 export function getDateRangeLabel(startDate: Date, endDate: Date): string {
   return `${format(startDate, 'MMM dd')} - ${format(endDate, 'MMM dd, yyyy')}`
 }
+
+/**
+ * Convert decimal hours to whole minutes.
+ */
+export function hoursToMinutes(hours: number): number {
+  return Math.round(hours * 60)
+}
+
+/**
+ * Convert whole minutes to decimal hours.
+ */
+export function minutesToHours(minutes: number): number {
+  return minutes / 60
+}
+
+/**
+ * Convert decimal hours into hours/minutes parts.
+ */
+export function hoursToParts(hours: number): { hours: number; minutes: number } {
+  const totalMinutes = Math.max(0, hoursToMinutes(hours))
+  return {
+    hours: Math.floor(totalMinutes / 60),
+    minutes: totalMinutes % 60,
+  }
+}
+
+/**
+ * Convert hours/minutes parts to decimal hours.
+ */
+export function partsToHours(hours: number, minutes: number): number {
+  const clampedHours = Math.max(0, Math.floor(hours || 0))
+  const clampedMinutes = Math.min(59, Math.max(0, Math.floor(minutes || 0)))
+  return clampedHours + clampedMinutes / 60
+}
+
+/**
+ * Format decimal hours as Hh Mm.
+ */
+export function formatHoursMinutes(hours: number): string {
+  const parts = hoursToParts(hours)
+  if (parts.minutes === 0) {
+    return `${parts.hours}h`
+  }
+  return `${parts.hours}h ${parts.minutes}m`
+}

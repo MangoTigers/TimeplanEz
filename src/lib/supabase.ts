@@ -31,3 +31,31 @@ export async function getUserProfile(userId: string) {
   if (error) throw error
   return data
 }
+
+export async function ensureUserProfile(user: { id: string; email?: string | null }) {
+  const { data: existing, error: selectError } = await supabase
+    .from('users')
+    .select('id')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (selectError) {
+    throw selectError
+  }
+
+  if (existing) {
+    return
+  }
+
+  const { error: insertError } = await supabase.from('users').insert({
+    id: user.id,
+    email: user.email ?? `${user.id}@local.user`,
+    school_hours_per_week: 20,
+    hourly_rate: 120,
+    currency: 'NOK',
+  })
+
+  if (insertError) {
+    throw insertError
+  }
+}

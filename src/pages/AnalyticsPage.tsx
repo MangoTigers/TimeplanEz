@@ -4,6 +4,9 @@ import { useShiftStore, useSettingsStore, useAuthStore } from '@/store'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/components/common/UI'
 import { Modal } from '@/components/common/UI'
+import { formatHoursMinutes } from '@/lib/calculations'
+import { StatCard } from '@/components/common/StatCard'
+import { ShiftTable } from '@/components/shifts/ShiftTable'
 import {
   BarChart,
   Bar,
@@ -159,31 +162,10 @@ export const AnalyticsPage: React.FC = () => {
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="card">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Hours</p>
-            <p className="text-3xl font-bold mt-2">{totalHours.toFixed(1)}h</p>
-          </div>
-
-          <div className="card">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Paid Hours</p>
-            <p className="text-3xl font-bold mt-2 text-success-600 dark:text-success-400">
-              {totalPaidHours.toFixed(1)}h
-            </p>
-          </div>
-
-          <div className="card">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Unpaid Hours</p>
-            <p className="text-3xl font-bold mt-2 text-warning-600 dark:text-warning-400">
-              {totalUnpaidHours.toFixed(1)}h
-            </p>
-          </div>
-
-          <div className="card">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Earnings</p>
-            <p className="text-3xl font-bold mt-2 text-primary-600 dark:text-primary-400">
-              {settings?.currency} {totalEarnings.toFixed(0)}
-            </p>
-          </div>
+          <StatCard label="Total Hours" value={formatHoursMinutes(totalHours)} />
+          <StatCard label="Paid Hours" value={formatHoursMinutes(totalPaidHours)} valueClassName="text-success-600 dark:text-success-400" />
+          <StatCard label="Unpaid Hours" value={formatHoursMinutes(totalUnpaidHours)} valueClassName="text-warning-600 dark:text-warning-400" />
+          <StatCard label="Total Earnings" value={`${settings?.currency} ${totalEarnings.toFixed(0)}`} valueClassName="text-primary-600 dark:text-primary-400" />
         </div>
 
         {/* Daily Hours Chart */}
@@ -252,42 +234,11 @@ export const AnalyticsPage: React.FC = () => {
         {monthShifts.length > 0 && (
           <div className="card">
             <h2 className="text-lg font-bold mb-4">Shifts This Month</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b border-gray-200 dark:border-gray-700">
-                  <tr>
-                    <th className="text-left px-4 py-3 font-medium">Date</th>
-                    <th className="text-left px-4 py-3 font-medium">Hours</th>
-                    <th className="text-left px-4 py-3 font-medium">Status</th>
-                    <th className="text-left px-4 py-3 font-medium">Category</th>
-                    <th className="text-right px-4 py-3 font-medium">Earnings</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {monthShifts.slice(0, 20).map((shift) => (
-                    <tr key={shift.id}>
-                      <td className="px-4 py-3">{format(parseISO(shift.date), 'MMM dd')}</td>
-                      <td className="px-4 py-3">{shift.hours_worked}h</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`badge ${
-                            shift.paid ? 'badge-success' : 'badge-warning'
-                          }`}
-                        >
-                          {shift.paid ? 'Paid' : 'Unpaid'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">{shift.category || '-'}</td>
-                      <td className="px-4 py-3 text-right">
-                        {shift.paid
-                          ? `${settings?.currency} ${(shift.hours_worked * (settings?.hourly_rate || 120)).toFixed(0)}`
-                          : '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ShiftTable
+              shifts={monthShifts}
+              currency={settings?.currency || 'NOK'}
+              hourlyRate={settings?.hourly_rate || 120}
+            />
           </div>
         )}
       </div>

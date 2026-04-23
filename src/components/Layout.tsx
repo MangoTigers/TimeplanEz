@@ -44,14 +44,14 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   return (
     <div className={theme === 'dark' ? 'dark' : ''}>
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
         {/* Header */}
-        <header className="sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+        <header className="sticky top-0 z-30 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="md:hidden p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
+                className="md:hidden p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg"
               >
                 ☰
               </button>
@@ -61,17 +61,17 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="flex items-center gap-4">
               <button
                 onClick={toggleTheme}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
                 title="Toggle theme"
               >
                 {theme === 'light' ? '🌙' : '☀️'}
               </button>
 
               <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600 dark:text-gray-400">{user?.email}</span>
+                <span className="text-sm text-gray-600 dark:text-slate-300">{user?.email}</span>
                 <button
                   onClick={handleLogout}
-                  className="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                  className="px-3 py-1 text-sm bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
                 >
                   Logout
                 </button>
@@ -83,7 +83,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         <div className="flex">
           {/* Sidebar */}
           <aside
-            className={`fixed md:relative w-64 h-[calc(100vh-64px)] bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 transform transition-transform md:translate-x-0 ${
+            className={`fixed md:relative w-64 h-[calc(100vh-64px)] bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-700 transform transition-transform md:translate-x-0 ${
               sidebarOpen ? 'translate-x-0' : '-translate-x-full'
             }`}
           >
@@ -92,7 +92,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <a
                   key={item.href}
                   href={item.href}
-                  className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-700 dark:text-gray-300"
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors text-gray-700 dark:text-slate-200"
                   onClick={() => setSidebarOpen(false)}
                 >
                   <span className="text-xl">{item.icon}</span>

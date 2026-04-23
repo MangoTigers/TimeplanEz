@@ -20,7 +20,7 @@ export const Loading: React.FC<LoadingProps> = ({ size = 'md', fullScreen = fals
 
   if (fullScreen) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-white/80 dark:bg-gray-950/80">
+      <div className="fixed inset-0 flex items-center justify-center bg-white/80 dark:bg-slate-950/85">
         {spinner}
       </div>
     )
@@ -120,21 +120,21 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center">
       <div
-        className="fixed inset-0 bg-black/50 dark:bg-black/70"
+        className="fixed inset-0 bg-black/55 dark:bg-black/80"
         onClick={onClose}
       ></div>
-      <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 flex items-center justify-between border-b border-gray-200 dark:border-gray-800 p-6 bg-white dark:bg-gray-900">
+      <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto border border-gray-200 dark:border-slate-700">
+        <div className="sticky top-0 flex items-center justify-between border-b border-gray-200 dark:border-slate-700 p-6 bg-white dark:bg-slate-900">
           <h2 className="text-xl font-bold">{title}</h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            className="text-gray-500 hover:text-gray-700 dark:text-slate-300 dark:hover:text-white"
           >
             ✕
           </button>
         </div>
         <div className="p-6">{children}</div>
-        {footer && <div className="border-t border-gray-200 dark:border-gray-800 p-6">{footer}</div>}
+        {footer && <div className="border-t border-gray-200 dark:border-slate-700 p-6">{footer}</div>}
       </div>
     </div>
   )

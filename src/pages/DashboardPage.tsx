@@ -4,16 +4,41 @@ import { useShiftStore, useSettingsStore, useAuthStore } from '@/store'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/components/common/UI'
 import { Modal } from '@/components/common/UI'
-import { getShiftsForWeek, calculateWeeklyStats, formatCurrency } from '@/lib/calculations'
+import { getShiftsForWeek, calculateWeeklyStats, formatCurrency, formatHoursMinutes, hoursToParts, partsToHours } from '@/lib/calculations'
 import { startOfWeek, format, addDays, isSameDay, parseISO } from 'date-fns'
+import { StatCard } from '@/components/common/StatCard'
+import { ShiftListItem } from '@/components/shifts/ShiftListItem'
+import { DurationInput } from '@/components/shifts/DurationInput'
+import { LogHoursForm } from '@/components/shifts/LogHoursForm'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 export const DashboardPage: React.FC = () => {
+  const location = useLocation()
+  const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { shifts, setShifts, setLoading } = useShiftStore()
+  const { shifts, setShifts, setLoading, updateShift } = useShiftStore()
   const { settings } = useSettingsStore()
   const toast = useToast()
   const [isAddModalOpen, setIsAddModalOpen] = React.useState(false)
+  const [isEditModalOpen, setIsEditModalOpen] = React.useState(false)
+  const [editingShift, setEditingShift] = React.useState<any | null>(null)
+  const [editSaving, setEditSaving] = React.useState(false)
+  const [editForm, setEditForm] = React.useState({
+    date: format(new Date(), 'yyyy-MM-dd'),
+    hours: 0,
+    minutes: 0,
+    category: 'General',
+    paidStatus: 'unpaid' as 'paid' | 'unpaid' | 'auto',
+    notes: '',
+  })
   const [selectedDate] = React.useState<Date>(new Date())
+
+  React.useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.get('log') === 'true') {
+      setIsAddModalOpen(true)
+    }
+  }, [location.search])
 
   React.useEffect(() => {
     if (user) {
@@ -54,6 +79,63 @@ export const DashboardPage: React.FC = () => {
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(thisWeekStart, i))
 
+  const openEditModal = (shift: any) => {
+    const parts = hoursToParts(shift.hours_worked)
+    setEditingShift(shift)
+    setEditForm({
+      date: shift.date,
+      hours: parts.hours,
+      minutes: parts.minutes,
+      category: shift.category || 'General',
+      paidStatus: shift.paid === null ? 'auto' : shift.paid ? 'paid' : 'unpaid',
+      notes: shift.notes || '',
+    })
+    setIsEditModalOpen(true)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingShift || !user) return
+
+    const workedHours = partsToHours(editForm.hours, editForm.minutes)
+    if (workedHours <= 0) {
+      toast.showToast({ type: 'warning', message: 'Duration must be greater than 0 minutes.' })
+      return
+    }
+
+    setEditSaving(true)
+    try {
+      const paidValue = editForm.paidStatus === 'auto' ? null : editForm.paidStatus === 'paid'
+
+      const payload = {
+        date: editForm.date,
+        hours_worked: workedHours,
+        category: editForm.category,
+        paid: paidValue,
+        notes: editForm.notes || null,
+        updated_at: new Date().toISOString(),
+      }
+
+      const { data, error } = await supabase
+        .from('shifts')
+        .update(payload)
+        .eq('id', editingShift.id)
+        .eq('user_id', user.id)
+        .select('*')
+        .single()
+
+      if (error) throw error
+
+      updateShift(editingShift.id, data)
+      toast.showToast({ type: 'success', message: 'Shift updated successfully.' })
+      setIsEditModalOpen(false)
+      setEditingShift(null)
+    } catch (error: any) {
+      toast.showToast({ type: 'error', message: error.message || 'Failed to update shift.' })
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
   return (
     <Layout>
       <div className="space-y-8">
@@ -70,38 +152,14 @@ export const DashboardPage: React.FC = () => {
 
         {/* This Week Summary */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="card">
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Hours</p>
-            <p className="text-3xl font-bold text-gray-900 dark:text-white">
-              {stats.totalHours.toFixed(1)}h
-            </p>
-          </div>
-
-          <div className="card">
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Paid Hours</p>
-            <p className="text-3xl font-bold text-success-600 dark:text-success-400">
-              {stats.paidHours.toFixed(1)}h
-            </p>
-          </div>
-
-          <div className="card">
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Unpaid Hours</p>
-            <p className="text-3xl font-bold text-warning-600 dark:text-warning-400">
-              {stats.unpaidHours.toFixed(1)}h
-            </p>
-          </div>
-
-          <div className="card">
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-              Earnings
-            </p>
-            <p className="text-3xl font-bold text-primary-600 dark:text-primary-400">
-              {formatCurrency(
-                stats.paidHours * (settings?.hourly_rate || 120),
-                settings?.currency || 'NOK'
-              )}
-            </p>
-          </div>
+          <StatCard label="Total Hours" value={formatHoursMinutes(stats.totalHours)} valueClassName="text-gray-900 dark:text-white" />
+          <StatCard label="Paid Hours" value={formatHoursMinutes(stats.paidHours)} valueClassName="text-success-600 dark:text-success-400" />
+          <StatCard label="Unpaid Hours" value={formatHoursMinutes(stats.unpaidHours)} valueClassName="text-warning-600 dark:text-warning-400" />
+          <StatCard
+            label="Earnings"
+            value={formatCurrency(stats.paidHours * (settings?.hourly_rate || 120), settings?.currency || 'NOK')}
+            valueClassName="text-primary-600 dark:text-primary-400"
+          />
         </div>
 
         {/* School Hours Tracker */}
@@ -110,9 +168,9 @@ export const DashboardPage: React.FC = () => {
           <div className="space-y-3">
             <div>
               <div className="flex justify-between mb-2">
-                <span className="text-sm font-medium">{stats.unpaidHours.toFixed(1)} / {schoolHours} hours used</span>
+                <span className="text-sm font-medium">{formatHoursMinutes(stats.unpaidHours)} / {formatHoursMinutes(schoolHours)} used</span>
                 <span className="text-sm text-gray-600 dark:text-gray-400">
-                  {stats.schoolHoursRemaining.toFixed(1)} remaining
+                  {formatHoursMinutes(stats.schoolHoursRemaining)} remaining
                 </span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
@@ -133,17 +191,7 @@ export const DashboardPage: React.FC = () => {
             <h2 className="text-lg font-bold mb-4">Today's Shifts</h2>
             <div className="space-y-2">
               {todayShifts.map((shift) => (
-                <div key={shift.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <div>
-                    <p className="font-medium">{shift.hours_worked} hours</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">{shift.category || 'General'}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`badge ${shift.paid ? 'badge-success' : 'badge-warning'}`}>
-                      {shift.paid ? 'Paid' : 'Unpaid'}
-                    </span>
-                  </div>
-                </div>
+                <ShiftListItem key={shift.id} shift={shift} showDate={false} onEdit={() => openEditModal(shift)} />
               ))}
             </div>
           </div>
@@ -165,7 +213,7 @@ export const DashboardPage: React.FC = () => {
                   <p className="text-xs font-medium text-gray-600 dark:text-gray-400">
                     {format(date, 'EEE')}
                   </p>
-                  <p className="text-sm font-bold mt-1">{dayTotal.toFixed(1)}h</p>
+                  <p className="text-sm font-bold mt-1">{formatHoursMinutes(dayTotal)}</p>
                   <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                     {format(date, 'dd')}
                   </p>
@@ -180,32 +228,115 @@ export const DashboardPage: React.FC = () => {
           <h2 className="text-lg font-bold mb-4">Recent Shifts</h2>
           <div className="space-y-2">
             {shifts.slice(0, 5).map((shift) => (
-              <div key={shift.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <div>
-                  <p className="font-medium">{format(parseISO(shift.date), 'MMM dd, yyyy')}</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {shift.hours_worked} hours • {shift.category || 'General'}
-                  </p>
-                </div>
-                <span className={`badge ${shift.paid === null ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400' : shift.paid ? 'badge-success' : 'badge-warning'}`}>
-                  {shift.paid === null ? 'Auto' : shift.paid ? 'Paid' : 'Unpaid'}
-                </span>
-              </div>
+              <ShiftListItem key={shift.id} shift={shift} onEdit={() => openEditModal(shift)} />
             ))}
           </div>
         </div>
       </div>
 
-      {/* Add Shift Modal - placeholder for now */}
-      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Log Hours">
-        <p className="text-gray-600 dark:text-gray-400">Quick add feature - navigate to Log Hours page for full form</p>
-        <div className="mt-4 flex gap-2">
-          <a href="/log-hours" className="btn-primary flex-1 text-center">
-            Go to Log Hours
-          </a>
-          <button onClick={() => setIsAddModalOpen(false)} className="btn-secondary flex-1">
-            Cancel
-          </button>
+      <Modal
+        isOpen={isAddModalOpen}
+        onClose={() => {
+          setIsAddModalOpen(false)
+          if (location.search.includes('log=true')) {
+            navigate('/dashboard', { replace: true })
+          }
+        }}
+        title="Log Hours"
+      >
+        <LogHoursForm
+          onSaved={() => {
+            setIsAddModalOpen(false)
+            if (location.search.includes('log=true')) {
+              navigate('/dashboard', { replace: true })
+            }
+          }}
+        />
+      </Modal>
+
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false)
+          setEditingShift(null)
+        }}
+        title="Edit Logged Hours"
+        footer={
+          <div className="flex gap-2">
+            <button onClick={handleSaveEdit} className="btn-primary flex-1" disabled={editSaving}>
+              {editSaving ? 'Saving...' : 'Save Changes'}
+            </button>
+            <button
+              onClick={() => {
+                setIsEditModalOpen(false)
+                setEditingShift(null)
+              }}
+              className="btn-secondary flex-1"
+            >
+              Cancel
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Date</label>
+            <input
+              type="date"
+              value={editForm.date}
+              onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+              className="input-base w-full"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Duration</label>
+            <DurationInput
+              hours={editForm.hours}
+              minutes={editForm.minutes}
+              onHoursChange={(hours) => setEditForm({ ...editForm, hours })}
+              onMinutesChange={(minutes) => setEditForm({ ...editForm, minutes })}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Category</label>
+            <select
+              value={editForm.category}
+              onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+              className="input-base w-full"
+            >
+              <option>General</option>
+              <option>Tutoring</option>
+              <option>Event</option>
+              <option>Administration</option>
+              <option>Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Paid Status</label>
+            <select
+              value={editForm.paidStatus}
+              onChange={(e) =>
+                setEditForm({ ...editForm, paidStatus: e.target.value as 'paid' | 'unpaid' | 'auto' })
+              }
+              className="input-base w-full"
+            >
+              <option value="auto">Auto</option>
+              <option value="paid">Paid</option>
+              <option value="unpaid">Unpaid</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Notes</label>
+            <textarea
+              value={editForm.notes}
+              onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+              className="input-base w-full h-24 resize-none"
+            />
+          </div>
         </div>
       </Modal>
     </Layout>

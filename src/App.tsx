@@ -7,7 +7,6 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 // Pages
 import { LoginPage } from '@/pages/LoginPage'
 import { DashboardPage } from '@/pages/DashboardPage'
-import { LogHoursPage } from '@/pages/LogHoursPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { AnalyticsPage } from '@/pages/AnalyticsPage'
 import { ReflectionsPage } from '@/pages/ReflectionsPage'
@@ -82,7 +81,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
             path="/log-hours"
             element={
               <ProtectedRoute>
-                <LogHoursPage />
+                <Navigate to="/dashboard?log=true" replace />
               </ProtectedRoute>
             }
           />

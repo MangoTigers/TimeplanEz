@@ -1,8 +1,10 @@
 import React from 'react'
 import { Layout } from '@/components/Layout'
-import { useSettingsStore, useAuthStore } from '@/store'
+import { useSettingsStore, useAuthStore, QuickTemplate } from '@/store'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/components/common/UI'
+import { partsToHours, hoursToParts, formatHoursMinutes } from '@/lib/calculations'
+import { DurationInput } from '@/components/shifts/DurationInput'
 
 interface SettingsFormData {
   school_hours_per_week: number
@@ -14,9 +16,12 @@ interface SettingsFormData {
 
 export const SettingsPage: React.FC = () => {
   const { user } = useAuthStore()
-  const { settings, updateSettings } = useSettingsStore()
+  const { settings, updateSettings, setQuickTemplates } = useSettingsStore()
   const toast = useToast()
   const [loading, setLoading] = React.useState(false)
+  const [templateLabel, setTemplateLabel] = React.useState('')
+  const [templateHours, setTemplateHours] = React.useState(0)
+  const [templateMinutes, setTemplateMinutes] = React.useState(0)
   const [formData, setFormData] = React.useState<SettingsFormData>({
     school_hours_per_week: settings?.school_hours_per_week || 20,
     hourly_rate: settings?.hourly_rate || 120,
@@ -24,6 +29,38 @@ export const SettingsPage: React.FC = () => {
     notifications_enabled: settings?.notifications_enabled || true,
     email_digest_enabled: settings?.email_digest_enabled || true,
   })
+
+  const schoolHoursParts = hoursToParts(formData.school_hours_per_week)
+
+  const quickTemplates = settings?.quick_templates || []
+
+  const handleAddTemplate = () => {
+    const totalMinutes = Math.max(0, templateHours * 60 + templateMinutes)
+    if (totalMinutes <= 0) {
+      toast.showToast({ type: 'warning', message: 'Template duration must be at least 1 minute.' })
+      return
+    }
+
+    const autoLabel = formatHoursMinutes(partsToHours(templateHours, templateMinutes))
+    const template: QuickTemplate = {
+      id: `tpl-${Date.now()}`,
+      label: templateLabel.trim() || autoLabel,
+      minutes: totalMinutes,
+    }
+
+    const updated = [...quickTemplates, template]
+    setQuickTemplates(updated)
+    toast.showToast({ type: 'success', message: 'Template added.' })
+    setTemplateLabel('')
+    setTemplateHours(0)
+    setTemplateMinutes(0)
+  }
+
+  const handleDeleteTemplate = (templateId: string) => {
+    const updated = quickTemplates.filter((template) => template.id !== templateId)
+    setQuickTemplates(updated)
+    toast.showToast({ type: 'success', message: 'Template removed.' })
+  }
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -62,19 +99,25 @@ export const SettingsPage: React.FC = () => {
                 School Hours Per Week
               </label>
               <div className="flex items-center gap-4">
-                <input
-                  type="number"
-                  min="0"
-                  max="168"
-                  step="1"
-                  value={formData.school_hours_per_week}
-                  onChange={(e) =>
-                    setFormData({ ...formData, school_hours_per_week: parseInt(e.target.value) })
+                <DurationInput
+                  hours={schoolHoursParts.hours}
+                  minutes={schoolHoursParts.minutes}
+                  maxHours={168}
+                  onHoursChange={(hours) =>
+                    setFormData({
+                      ...formData,
+                      school_hours_per_week: partsToHours(hours, schoolHoursParts.minutes),
+                    })
                   }
-                  className="input-base w-32"
+                  onMinutesChange={(minutes) =>
+                    setFormData({
+                      ...formData,
+                      school_hours_per_week: partsToHours(schoolHoursParts.hours, minutes),
+                    })
+                  }
                 />
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Hours per week that are unpaid (school hours)
+                  Unpaid school-time quota per week ({formatHoursMinutes(formData.school_hours_per_week)})
                 </p>
               </div>
             </div>
@@ -84,7 +127,7 @@ export const SettingsPage: React.FC = () => {
                 Hourly Rate for Paid Work
               </label>
               <div className="flex items-center gap-2">
-                <span className="text-xl">{settings?.currency || 'NOK'}</span>
+                <span className="text-xl">{formData.currency}</span>
                 <input
                   type="number"
                   min="0"
@@ -115,6 +158,57 @@ export const SettingsPage: React.FC = () => {
               {loading ? 'Saving...' : '💾 Save Settings'}
             </button>
           </form>
+        </div>
+
+        {/* Quick Templates */}
+        <div className="card">
+          <h2 className="text-xl font-bold mb-6">Quick Duration Templates</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            These templates appear on the Log Hours page for one-click duration selection.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+            <input
+              type="text"
+              value={templateLabel}
+              onChange={(e) => setTemplateLabel(e.target.value)}
+              className="input-base md:col-span-2"
+              placeholder="Template label (optional, e.g. Quick Shift)"
+            />
+            <div className="md:col-span-2">
+              <DurationInput
+                hours={templateHours}
+                minutes={templateMinutes}
+                onHoursChange={setTemplateHours}
+                onMinutesChange={setTemplateMinutes}
+              />
+            </div>
+          </div>
+
+          <button type="button" onClick={handleAddTemplate} className="btn-secondary">
+            + Add Template
+          </button>
+
+          <div className="mt-4 space-y-2">
+            {quickTemplates.map((template) => (
+              <div key={template.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-gray-100">{template.label}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">{formatHoursMinutes(template.minutes / 60)}</p>
+                </div>
+                <button
+                  type="button"
+                  className="btn-danger"
+                  onClick={() => handleDeleteTemplate(template.id)}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            {!quickTemplates.length && (
+              <p className="text-sm text-gray-600 dark:text-gray-400">No templates yet.</p>
+            )}
+          </div>
         </div>
 
         {/* Notification Settings */}

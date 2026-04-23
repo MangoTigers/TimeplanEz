@@ -1,6 +1,19 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+export interface QuickTemplate {
+  id: string
+  label: string
+  minutes: number
+}
+
+const defaultQuickTemplates: QuickTemplate[] = [
+  { id: 't-2h', label: '2h', minutes: 120 },
+  { id: 't-4h', label: '4h', minutes: 240 },
+  { id: 't-6h', label: '6h', minutes: 360 },
+  { id: 't-8h', label: '8h', minutes: 480 },
+]
+
 interface AuthStore {
   user: any | null
   session: any | null
@@ -77,9 +90,11 @@ interface UserSettingsStore {
     theme: 'light' | 'dark'
     notifications_enabled: boolean
     email_digest_enabled: boolean
+    quick_templates: QuickTemplate[]
   } | null
   setSettings: (settings: any) => void
   updateSettings: (updates: any) => void
+  setQuickTemplates: (templates: QuickTemplate[]) => void
 }
 
 export const useSettingsStore = create<UserSettingsStore>()(
@@ -92,11 +107,26 @@ export const useSettingsStore = create<UserSettingsStore>()(
         theme: 'light',
         notifications_enabled: true,
         email_digest_enabled: true,
+        quick_templates: defaultQuickTemplates,
       },
-      setSettings: (settings) => set({ settings }),
+      setSettings: (settings) =>
+        set({
+          settings: {
+            ...settings,
+            quick_templates: settings?.quick_templates?.length
+              ? settings.quick_templates
+              : defaultQuickTemplates,
+          },
+        }),
       updateSettings: (updates) =>
         set((state) => ({
           settings: state.settings ? { ...state.settings, ...updates } : null,
+        })),
+      setQuickTemplates: (templates) =>
+        set((state) => ({
+          settings: state.settings
+            ? { ...state.settings, quick_templates: templates }
+            : null,
         })),
     }),
     {
