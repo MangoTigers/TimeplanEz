@@ -5,7 +5,13 @@ import { supabase } from '@/lib/supabase'
 import { useToast } from '@/components/common/UI'
 import { Modal } from '@/components/common/UI'
 import { formatHoursMinutes } from '@/lib/calculations'
-import { parseReflection } from '@/lib/reflections'
+import {
+  defaultReflectionFields,
+  formatReflectionFieldValue,
+  normalizeReflectionFields,
+  parseReflection,
+  type ReflectionData,
+} from '@/lib/reflections'
 import { StatCard } from '@/components/common/StatCard'
 import { ShiftTable } from '@/components/shifts/ShiftTable'
 import {
@@ -33,11 +39,7 @@ interface DayExportRow {
   status: string
   categories: string[]
   notes: string
-  reflectionTaskCompleted: string
-  reflectionHowItWent: string
-  reflectionCompletedPlannedWork: string
-  reflectionNeededHelp: string
-  reflectionLearnedSomething: string
+  reflection: ReflectionData
   enhancedReflection: string
 }
 
@@ -46,6 +48,10 @@ export const AnalyticsPage: React.FC = () => {
   const { shifts, setShifts, deleteShift } = useShiftStore()
   const { settings } = useSettingsStore()
   const toast = useToast()
+  const reflectionFields = React.useMemo(
+    () => normalizeReflectionFields(settings?.reflection_fields?.length ? settings.reflection_fields : defaultReflectionFields),
+    [settings?.reflection_fields]
+  )
   const [selectedMonth, setSelectedMonth] = React.useState(new Date())
   const [isExportModalOpen, setIsExportModalOpen] = React.useState(false)
 
@@ -155,7 +161,7 @@ export const AnalyticsPage: React.FC = () => {
         const paidHours = dayShifts.filter((shift) => shift.paid).reduce((sum, shift) => sum + shift.hours_worked, 0)
         const unpaidHours = totalHours - paidHours
         const reflectionSource = dayShifts.find((shift) => Boolean(shift.reflection))
-        const reflection = parseReflection(reflectionSource?.reflection || null)
+        const reflection = parseReflection(reflectionSource?.reflection || null, reflectionFields)
 
         return {
           date,
@@ -167,16 +173,12 @@ export const AnalyticsPage: React.FC = () => {
           notes: Array.from(
             new Set(dayShifts.map((shift) => shift.notes?.trim()).filter(Boolean) as string[])
           ).join(' | '),
-          reflectionTaskCompleted: reflection.taskCompleted,
-          reflectionHowItWent: reflection.howItWent,
-          reflectionCompletedPlannedWork: reflection.checklist.completedPlannedWork ? 'Yes' : 'No',
-          reflectionNeededHelp: reflection.checklist.neededHelp ? 'Yes' : 'No',
-          reflectionLearnedSomething: reflection.checklist.learnedSomething ? 'Yes' : 'No',
+          reflection,
           enhancedReflection: reflectionSource?.enhanced_reflection || '',
         }
       })
       .sort((a, b) => (a.date < b.date ? 1 : -1))
-  }, [monthShifts])
+  }, [monthShifts, reflectionFields])
 
   const handleExportCSV = () => {
     const headers = [
@@ -187,11 +189,7 @@ export const AnalyticsPage: React.FC = () => {
       'Status',
       'Categories',
       'Notes',
-      'Reflection Task Completed',
-      'Reflection How It Went',
-      'Reflection Completed Planned Work',
-      'Reflection Needed Help',
-      'Reflection Learned Something',
+      ...reflectionFields.map((field) => field.label),
       'Enhanced Reflection',
     ]
 
@@ -203,11 +201,7 @@ export const AnalyticsPage: React.FC = () => {
       day.status,
       day.categories.join(' • '),
       day.notes,
-      day.reflectionTaskCompleted,
-      day.reflectionHowItWent,
-      day.reflectionCompletedPlannedWork,
-      day.reflectionNeededHelp,
-      day.reflectionLearnedSomething,
+      ...reflectionFields.map((field) => formatReflectionFieldValue(field, day.reflection.values[field.id])),
       day.enhancedReflection,
     ])
 

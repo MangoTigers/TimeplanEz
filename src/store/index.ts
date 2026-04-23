@@ -1,6 +1,11 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { defaultCategories } from '@/lib/reflections'
+import {
+  defaultCategories,
+  defaultReflectionFields,
+  normalizeReflectionFields,
+  type ReflectionFieldConfig,
+} from '@/lib/reflections'
 
 export interface QuickTemplate {
   id: string
@@ -94,6 +99,7 @@ interface UserSettingsStore {
     notifications_enabled: boolean
     email_digest_enabled: boolean
     custom_categories: string[]
+    reflection_fields: ReflectionFieldConfig[]
     quick_templates: QuickTemplate[]
   } | null
   setSettings: (settings: any) => void
@@ -114,11 +120,13 @@ export const useSettingsStore = create<UserSettingsStore>()(
         notifications_enabled: true,
         email_digest_enabled: true,
         custom_categories: defaultCategories,
+        reflection_fields: defaultReflectionFields,
         quick_templates: defaultQuickTemplates,
       },
       setSettings: (settings) =>
         set({
           settings: {
+            ...settings,
             school_hours_per_week: settings?.school_hours_per_week ?? 20,
             use_school_hours_mode: settings?.use_school_hours_mode ?? true,
             hourly_rate: settings?.hourly_rate ?? 120,
@@ -130,7 +138,9 @@ export const useSettingsStore = create<UserSettingsStore>()(
             custom_categories: settings?.custom_categories?.length
               ? settings.custom_categories
               : defaultCategories,
-            ...settings,
+            reflection_fields: settings?.reflection_fields?.length
+              ? normalizeReflectionFields(settings.reflection_fields)
+              : defaultReflectionFields,
             quick_templates: settings?.quick_templates?.length
               ? settings.quick_templates
               : defaultQuickTemplates,

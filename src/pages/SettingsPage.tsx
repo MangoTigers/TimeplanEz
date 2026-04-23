@@ -5,7 +5,14 @@ import { supabase } from '@/lib/supabase'
 import { useToast } from '@/components/common/UI'
 import { partsToHours, hoursToParts, formatHoursMinutes } from '@/lib/calculations'
 import { DurationInput } from '@/components/shifts/DurationInput'
-import { defaultCategories } from '@/lib/reflections'
+import {
+  createReflectionFieldId,
+  defaultCategories,
+  defaultReflectionFields,
+  normalizeReflectionFields,
+  type ReflectionFieldConfig,
+  type ReflectionFieldType,
+} from '@/lib/reflections'
 
 interface SettingsFormData {
   school_hours_per_week: number
@@ -16,6 +23,7 @@ interface SettingsFormData {
   notifications_enabled: boolean
   email_digest_enabled: boolean
   custom_categories: string[]
+  reflection_fields: ReflectionFieldConfig[]
 }
 
 export const SettingsPage: React.FC = () => {
@@ -30,6 +38,8 @@ export const SettingsPage: React.FC = () => {
   const [templateHours, setTemplateHours] = React.useState(0)
   const [templateMinutes, setTemplateMinutes] = React.useState(0)
   const [newCategory, setNewCategory] = React.useState('')
+  const [newReflectionFieldLabel, setNewReflectionFieldLabel] = React.useState('')
+  const [newReflectionFieldType, setNewReflectionFieldType] = React.useState<ReflectionFieldType>('textarea')
   const [formData, setFormData] = React.useState<SettingsFormData>({
     school_hours_per_week: settings?.school_hours_per_week || 20,
     use_school_hours_mode: settings?.use_school_hours_mode ?? true,
@@ -39,6 +49,9 @@ export const SettingsPage: React.FC = () => {
     notifications_enabled: settings?.notifications_enabled || true,
     email_digest_enabled: settings?.email_digest_enabled || true,
     custom_categories: settings?.custom_categories?.length ? settings.custom_categories : defaultCategories,
+    reflection_fields: settings?.reflection_fields?.length
+      ? normalizeReflectionFields(settings.reflection_fields)
+      : defaultReflectionFields,
   })
 
   React.useEffect(() => {
@@ -55,17 +68,22 @@ export const SettingsPage: React.FC = () => {
       notifications_enabled: settings.notifications_enabled,
       email_digest_enabled: settings.email_digest_enabled,
       custom_categories: settings.custom_categories?.length ? settings.custom_categories : defaultCategories,
+      reflection_fields: settings.reflection_fields?.length
+        ? normalizeReflectionFields(settings.reflection_fields)
+        : defaultReflectionFields,
     })
   }, [settings])
 
   const schoolHoursParts = hoursToParts(formData.school_hours_per_week)
   const settingsFormId = 'settings-main-form'
+  const reflectionFields = React.useMemo(() => normalizeReflectionFields(formData.reflection_fields), [formData.reflection_fields])
 
   const settingsSections = [
     { id: 'work-hours', label: 'Work Hours' },
     { id: 'custom-categories', label: 'Categories' },
     { id: 'notifications', label: 'Notifications' },
     { id: 'ai-settings', label: 'AI Settings' },
+    { id: 'reflection-fields', label: 'Reflections' },
     { id: 'quick-templates', label: 'Quick Templates' },
     { id: 'account', label: 'Account' },
     { id: 'log-cleanup', label: 'Log Cleanup' },
@@ -129,6 +147,7 @@ export const SettingsPage: React.FC = () => {
         use_school_hours_mode: formData.use_school_hours_mode,
         openai_api_key: formData.openai_api_key || null,
         custom_categories: formData.custom_categories,
+        reflection_fields: reflectionFields,
       }
 
       const { error: optionalError } = await supabase
@@ -143,7 +162,7 @@ export const SettingsPage: React.FC = () => {
         })
       }
 
-      updateSettings(formData)
+      updateSettings({ ...formData, reflection_fields: reflectionFields })
       toast.showToast({ type: 'success', message: 'Settings saved successfully!' })
     } catch (error: any) {
       toast.showToast({ type: 'error', message: error.message })
@@ -178,6 +197,89 @@ export const SettingsPage: React.FC = () => {
       return
     }
     setFormData({ ...formData, custom_categories: next })
+  }
+
+  const handleAddReflectionField = () => {
+    const label = newReflectionFieldLabel.trim()
+    if (!label) {
+      toast.showToast({ type: 'warning', message: 'Reflection field title is required.' })
+      return
+    }
+
+    const id = createReflectionFieldId(label, reflectionFields.map((field) => field.id))
+    const nextField: ReflectionFieldConfig = {
+      id,
+      label,
+      type: newReflectionFieldType,
+      placeholder: newReflectionFieldType === 'checkbox' ? '' : '',
+      helpText: '',
+      required: false,
+      options: newReflectionFieldType === 'select' ? ['Option 1', 'Option 2'] : undefined,
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      reflection_fields: [...reflectionFields, nextField],
+    }))
+    setNewReflectionFieldLabel('')
+    setNewReflectionFieldType('textarea')
+  }
+
+  const handleUpdateReflectionField = (fieldId: string, updates: Partial<ReflectionFieldConfig>) => {
+    setFormData((prev) => ({
+      ...prev,
+      reflection_fields: prev.reflection_fields.map((field) =>
+        field.id === fieldId
+          ? (() => {
+              const nextType = updates.type ?? field.type
+
+              return {
+                ...field,
+                ...updates,
+                type: nextType,
+                options: nextType === 'select' ? updates.options ?? field.options ?? ['Option 1'] : undefined,
+              }
+            })()
+          : field
+      ),
+    }))
+  }
+
+  const handleMoveReflectionField = (fieldId: string, direction: -1 | 1) => {
+    setFormData((prev) => {
+      const index = prev.reflection_fields.findIndex((field) => field.id === fieldId)
+      if (index < 0) return prev
+
+      const target = index + direction
+      if (target < 0 || target >= prev.reflection_fields.length) {
+        return prev
+      }
+
+      const next = [...prev.reflection_fields]
+      const [moved] = next.splice(index, 1)
+      next.splice(target, 0, moved)
+
+      return { ...prev, reflection_fields: next }
+    })
+  }
+
+  const handleRemoveReflectionField = (fieldId: string) => {
+    if (reflectionFields.length <= 1) {
+      toast.showToast({ type: 'warning', message: 'At least one reflection field is required.' })
+      return
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      reflection_fields: prev.reflection_fields.filter((field) => field.id !== fieldId),
+    }))
+  }
+
+  const handleResetReflectionFields = () => {
+    setFormData((prev) => ({
+      ...prev,
+      reflection_fields: defaultReflectionFields,
+    }))
   }
 
   const handleDeleteOldLogs = async () => {
@@ -411,6 +513,185 @@ export const SettingsPage: React.FC = () => {
                 </div>
               </div>
             </form>
+
+            <div id="reflection-fields" className="card scroll-mt-24">
+              <h2 className="text-xl font-bold mb-3">Reflection Builder</h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-5">
+                Choose exactly what appears in each reflection. You can mix text boxes, longer notes, checkboxes, numbers, and dropdowns.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_12rem_auto] gap-3 mb-4">
+                <input
+                  type="text"
+                  value={newReflectionFieldLabel}
+                  onChange={(e) => setNewReflectionFieldLabel(e.target.value)}
+                  className="input-base w-full"
+                  placeholder="New field title"
+                />
+                <select
+                  value={newReflectionFieldType}
+                  onChange={(e) => setNewReflectionFieldType(e.target.value as ReflectionFieldType)}
+                  className="input-base w-full"
+                >
+                  <option value="textarea">Long text</option>
+                  <option value="text">Short text</option>
+                  <option value="checkbox">Checkbox</option>
+                  <option value="number">Number</option>
+                  <option value="select">Dropdown</option>
+                </select>
+                <button type="button" onClick={handleAddReflectionField} className="btn-secondary whitespace-nowrap">
+                  Add Field
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {reflectionFields.map((field, index) => {
+                  const optionsText = field.options?.join('\n') || ''
+
+                  return (
+                    <div key={field.id} className="rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50 p-4">
+                      <div className="flex flex-col lg:flex-row gap-4">
+                        <div className="flex-1 space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                                Title
+                              </label>
+                              <input
+                                type="text"
+                                value={field.label}
+                                onChange={(e) => handleUpdateReflectionField(field.id, { label: e.target.value })}
+                                className="input-base w-full"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                                Field Type
+                              </label>
+                              <select
+                                value={field.type}
+                                onChange={(e) =>
+                                  handleUpdateReflectionField(field.id, {
+                                    type: e.target.value as ReflectionFieldType,
+                                    options:
+                                      e.target.value === 'select'
+                                        ? field.options?.length
+                                          ? field.options
+                                          : ['Option 1']
+                                        : undefined,
+                                  })
+                                }
+                                className="input-base w-full"
+                              >
+                                <option value="textarea">Long text</option>
+                                <option value="text">Short text</option>
+                                <option value="checkbox">Checkbox</option>
+                                <option value="number">Number</option>
+                                <option value="select">Dropdown</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                                Placeholder
+                              </label>
+                              <input
+                                type="text"
+                                value={field.placeholder || ''}
+                                onChange={(e) => handleUpdateReflectionField(field.id, { placeholder: e.target.value })}
+                                className="input-base w-full"
+                                placeholder="Shown in text fields"
+                                disabled={field.type === 'checkbox'}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                                Helper text
+                              </label>
+                              <input
+                                type="text"
+                                value={field.helpText || ''}
+                                onChange={(e) => handleUpdateReflectionField(field.id, { helpText: e.target.value })}
+                                className="input-base w-full"
+                                placeholder="Small hint below the field"
+                              />
+                            </div>
+                          </div>
+
+                          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(field.required)}
+                              onChange={(e) => handleUpdateReflectionField(field.id, { required: e.target.checked })}
+                            />
+                            Required
+                          </label>
+
+                          {field.type === 'select' && (
+                            <div>
+                              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                                Dropdown options
+                              </label>
+                              <textarea
+                                value={optionsText}
+                                onChange={(e) =>
+                                  handleUpdateReflectionField(field.id, {
+                                    options: e.target.value
+                                      .split('\n')
+                                      .map((option) => option.trim())
+                                      .filter(Boolean),
+                                  })
+                                }
+                                className="input-base w-full h-28 resize-none"
+                                placeholder="One option per line"
+                              />
+                            </div>
+                          )}
+
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Field ID: <span className="font-mono">{field.id}</span>
+                          </p>
+                        </div>
+
+                        <div className="flex flex-row lg:flex-col gap-2 lg:w-36">
+                          <button
+                            type="button"
+                            onClick={() => handleMoveReflectionField(field.id, -1)}
+                            disabled={index === 0}
+                            className="btn-secondary flex-1 lg:flex-none"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveReflectionField(field.id, 1)}
+                            disabled={index === reflectionFields.length - 1}
+                            className="btn-secondary flex-1 lg:flex-none"
+                          >
+                            ↓
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveReflectionField(field.id)}
+                            className="btn-danger flex-1 lg:flex-none"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="mt-4 flex flex-col sm:flex-row gap-2">
+                <button type="button" onClick={handleResetReflectionFields} className="btn-secondary">
+                  Reset to Default Reflection Fields
+                </button>
+              </div>
+            </div>
 
             {/* Quick Templates */}
             <div id="quick-templates" className="card scroll-mt-24">

@@ -6,7 +6,15 @@ import { v4 as uuidv4 } from 'uuid'
 import { format, startOfWeek, parseISO } from 'date-fns'
 import { partsToHours, hoursToParts, formatHoursMinutes } from '@/lib/calculations'
 import { DurationInput } from './DurationInput'
-import { defaultCategories, defaultReflectionChecklist, hasReflectionContent, serializeReflection } from '@/lib/reflections'
+import {
+  createDefaultReflectionValues,
+  defaultCategories,
+  defaultReflectionFields,
+  hasReflectionContent,
+  normalizeReflectionFields,
+  serializeReflection,
+  type ReflectionValue,
+} from '@/lib/reflections'
 
 interface LogHoursFormProps {
   onSaved?: () => void
@@ -23,6 +31,10 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
   const toast = useToast()
   const useSchoolHoursMode = settings?.use_school_hours_mode ?? true
   const categories = settings?.custom_categories?.length ? settings.custom_categories : defaultCategories
+  const reflectionFields = React.useMemo(
+    () => normalizeReflectionFields(settings?.reflection_fields?.length ? settings.reflection_fields : defaultReflectionFields),
+    [settings?.reflection_fields]
+  )
   type PaidStatus = 'auto' | 'paid' | 'unpaid'
   const [loading, setLoading] = React.useState(false)
   const [formData, setFormData] = React.useState({
@@ -34,12 +46,20 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
     category: categories[0] || 'General',
     notes: '',
     paidStatus: (useSchoolHoursMode ? 'auto' : 'paid') as PaidStatus,
-    reflectionTaskCompleted: '',
-    reflectionHowItWent: '',
-    checklistCompletedPlannedWork: false,
-    checklistNeededHelp: false,
-    checklistLearnedSomething: false,
+    reflectionValues: createDefaultReflectionValues(reflectionFields),
   })
+
+  React.useEffect(() => {
+    setFormData((prev) => {
+      const nextValues = reflectionFields.reduce((values, field) => {
+        values[field.id] =
+          prev.reflectionValues[field.id] ?? (field.type === 'checkbox' ? false : '')
+        return values
+      }, {} as Record<string, ReflectionValue>)
+
+      return { ...prev, reflectionValues: nextValues }
+    })
+  }, [reflectionFields])
 
   React.useEffect(() => {
     if (!useSchoolHoursMode && formData.paidStatus === 'auto') {
@@ -109,16 +129,8 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
         return shiftDate >= weekStart && shiftDate < new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000)
       })
 
-      const reflectionPayload = {
-        taskCompleted: formData.reflectionTaskCompleted.trim(),
-        howItWent: formData.reflectionHowItWent.trim(),
-        checklist: {
-          completedPlannedWork: formData.checklistCompletedPlannedWork,
-          neededHelp: formData.checklistNeededHelp,
-          learnedSomething: formData.checklistLearnedSomething,
-        },
-      }
-      const hasNewReflectionForDay = hasReflectionContent(reflectionPayload)
+      const reflectionPayload = { values: formData.reflectionValues }
+      const hasNewReflectionForDay = hasReflectionContent(reflectionPayload, reflectionFields)
 
       const { data: existingDayRefRows, error: existingDayRefError } = await supabase
         .from('shifts')
@@ -241,11 +253,7 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
         category: categories[0] || 'General',
         notes: '',
         paidStatus: useSchoolHoursMode ? 'auto' : 'paid',
-        reflectionTaskCompleted: '',
-        reflectionHowItWent: '',
-        checklistCompletedPlannedWork: defaultReflectionChecklist.completedPlannedWork,
-        checklistNeededHelp: defaultReflectionChecklist.neededHelp,
-        checklistLearnedSomething: defaultReflectionChecklist.learnedSomething,
+        reflectionValues: createDefaultReflectionValues(reflectionFields),
       })
 
       onSaved?.()
@@ -383,52 +391,102 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
       <div className="card">
         <h2 className="text-sm font-semibold mb-3 text-gray-900 dark:text-gray-100">Reflection (Optional)</h2>
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Task Completed</label>
-            <textarea
-              value={formData.reflectionTaskCompleted}
-              onChange={(e) => setFormData({ ...formData, reflectionTaskCompleted: e.target.value })}
-              className="input-base w-full h-20 resize-none"
-              placeholder="What tasks did you complete?"
-            ></textarea>
-          </div>
+          {reflectionFields.map((field) => {
+            const value = formData.reflectionValues[field.id]
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">How It Went</label>
-            <textarea
-              value={formData.reflectionHowItWent}
-              onChange={(e) => setFormData({ ...formData, reflectionHowItWent: e.target.value })}
-              className="input-base w-full h-20 resize-none"
-              placeholder="How did the shift go?"
-            ></textarea>
-          </div>
+            return (
+              <div key={field.id}>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+                  {field.label}
+                  {field.required ? ' *' : ''}
+                </label>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={formData.checklistCompletedPlannedWork}
-                onChange={(e) => setFormData({ ...formData, checklistCompletedPlannedWork: e.target.checked })}
-              />
-              Completed planned work
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={formData.checklistNeededHelp}
-                onChange={(e) => setFormData({ ...formData, checklistNeededHelp: e.target.checked })}
-              />
-              Needed help
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={formData.checklistLearnedSomething}
-                onChange={(e) => setFormData({ ...formData, checklistLearnedSomething: e.target.checked })}
-              />
-              Learned something new
-            </label>
-          </div>
+                {field.type === 'textarea' && (
+                  <textarea
+                    value={typeof value === 'string' ? value : ''}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        reflectionValues: { ...formData.reflectionValues, [field.id]: e.target.value },
+                      })
+                    }
+                    className="input-base w-full h-20 resize-none"
+                    placeholder={field.placeholder || ''}
+                  />
+                )}
+
+                {field.type === 'text' && (
+                  <input
+                    type="text"
+                    value={typeof value === 'string' ? value : ''}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        reflectionValues: { ...formData.reflectionValues, [field.id]: e.target.value },
+                      })
+                    }
+                    className="input-base w-full"
+                    placeholder={field.placeholder || ''}
+                  />
+                )}
+
+                {field.type === 'number' && (
+                  <input
+                    type="number"
+                    value={typeof value === 'string' ? value : ''}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        reflectionValues: { ...formData.reflectionValues, [field.id]: e.target.value },
+                      })
+                    }
+                    className="input-base w-full"
+                    placeholder={field.placeholder || ''}
+                  />
+                )}
+
+                {field.type === 'checkbox' && (
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(value)}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          reflectionValues: { ...formData.reflectionValues, [field.id]: e.target.checked },
+                        })
+                      }
+                    />
+                    <span>{field.helpText || field.placeholder || field.label}</span>
+                  </label>
+                )}
+
+                {field.type === 'select' && (
+                  <select
+                    value={typeof value === 'string' ? value : ''}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        reflectionValues: { ...formData.reflectionValues, [field.id]: e.target.value },
+                      })
+                    }
+                    className="input-base w-full"
+                  >
+                    <option value="">Select an option</option>
+                    {(field.options || []).map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {field.helpText && field.type !== 'checkbox' && (
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{field.helpText}</p>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
 

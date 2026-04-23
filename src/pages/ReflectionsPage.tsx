@@ -7,9 +7,12 @@ import { useToast, Modal } from '@/components/common/UI'
 import { formatHoursMinutes } from '@/lib/calculations'
 import { ShiftStatusBadge } from '@/components/shifts/ShiftStatusBadge'
 import {
-  defaultReflectionChecklist,
+  createDefaultReflectionValues,
+  defaultReflectionFields,
   hasReflectionContent,
+  formatReflectionFieldValue,
   parseReflection,
+  normalizeReflectionFields,
   serializeReflection,
   type ReflectionData,
 } from '@/lib/reflections'
@@ -37,15 +40,17 @@ interface DayReflectionGroup {
 }
 
 const emptyReflectionData: ReflectionData = {
-  taskCompleted: '',
-  howItWent: '',
-  checklist: { ...defaultReflectionChecklist },
+  values: createDefaultReflectionValues(defaultReflectionFields),
 }
 
 export const ReflectionsPage: React.FC = () => {
   const { user } = useAuthStore()
   const { settings } = useSettingsStore()
   const { shifts } = useShiftStore()
+  const reflectionFields = React.useMemo(
+    () => normalizeReflectionFields(settings?.reflection_fields?.length ? settings.reflection_fields : defaultReflectionFields),
+    [settings?.reflection_fields]
+  )
   const hasOpenAiKey = Boolean(settings?.openai_api_key?.trim())
   const toast = useToast()
 
@@ -84,8 +89,18 @@ export const ReflectionsPage: React.FC = () => {
   const openEdit = (entry: ShiftWithReflection) => {
     setEditingId(entry.id)
     setEditingDate(entry.date)
-    setEditReflection(parseReflection(entry.reflection))
+    setEditReflection(parseReflection(entry.reflection, reflectionFields))
     setEnhancedText(entry.enhanced_reflection || '')
+  }
+
+  const getDayReflection = (shiftsForDay: ShiftWithReflection[]) => {
+    const representativeReflection = shiftsForDay.find((shift) => hasReflectionContent(parseReflection(shift.reflection, reflectionFields), reflectionFields))
+    const reflection = parseReflection(representativeReflection?.reflection || null, reflectionFields)
+    return {
+      reflection,
+      enhancedReflection: representativeReflection?.enhanced_reflection || null,
+      hasReflection: hasReflectionContent(reflection, reflectionFields),
+    }
   }
 
   const dayGroups = React.useMemo(() => {
@@ -104,9 +119,7 @@ export const ReflectionsPage: React.FC = () => {
         const totalHours = shifts.reduce((sum, shift) => sum + shift.hours_worked, 0)
         const paidHours = shifts.filter((shift) => shift.paid).reduce((sum, shift) => sum + shift.hours_worked, 0)
         const unpaidHours = totalHours - paidHours
-        const representativeReflection = shifts.find((shift) => hasReflectionContent(parseReflection(shift.reflection)))
-        const reflection = parseReflection(representativeReflection?.reflection || null)
-        const enhancedReflection = representativeReflection?.enhanced_reflection || null
+        const dayReflection = getDayReflection(shifts)
         const categories = Array.from(new Set(shifts.map((shift) => shift.category || 'General')))
 
         return {
@@ -116,19 +129,22 @@ export const ReflectionsPage: React.FC = () => {
           paidHours,
           unpaidHours,
           categories,
-          reflection,
-          enhancedReflection,
-          hasReflection: hasReflectionContent(reflection),
+          reflection: dayReflection.reflection,
+          enhancedReflection: dayReflection.enhancedReflection,
+          hasReflection: dayReflection.hasReflection,
         }
       })
       .filter((group) => {
         if (!q) return true
 
         const categoriesText = group.categories.join(' ').toLowerCase()
+        const reflectionText = reflectionFields
+          .map((field) => formatReflectionFieldValue(field, group.reflection.values[field.id]))
+          .join(' ')
+          .toLowerCase()
         return (
           categoriesText.includes(q) ||
-          group.reflection.taskCompleted.toLowerCase().includes(q) ||
-          group.reflection.howItWent.toLowerCase().includes(q) ||
+          reflectionText.includes(q) ||
           format(parseISO(group.date), 'MMMM dd, yyyy').toLowerCase().includes(q)
         )
       })
@@ -144,9 +160,7 @@ export const ReflectionsPage: React.FC = () => {
     const totalHours = shifts.reduce((sum, shift) => sum + shift.hours_worked, 0)
     const paidHours = shifts.filter((shift) => shift.paid).reduce((sum, shift) => sum + shift.hours_worked, 0)
     const unpaidHours = totalHours - paidHours
-    const representativeReflection = shifts.find((shift) => hasReflectionContent(parseReflection(shift.reflection)))
-    const reflection = parseReflection(representativeReflection?.reflection || null)
-    const enhancedReflection = representativeReflection?.enhanced_reflection || null
+    const dayReflection = getDayReflection(shifts)
     const categories = Array.from(new Set(shifts.map((shift) => shift.category || 'General')))
 
     return {
@@ -156,16 +170,16 @@ export const ReflectionsPage: React.FC = () => {
       paidHours,
       unpaidHours,
       categories,
-      reflection,
-      enhancedReflection,
-      hasReflection: hasReflectionContent(reflection),
+      reflection: dayReflection.reflection,
+      enhancedReflection: dayReflection.enhancedReflection,
+      hasReflection: dayReflection.hasReflection,
     } as DayReflectionGroup
   }, [entries, selectedDate])
 
   const handleSaveReflection = async () => {
     if (!user || !editingId || !editingDate) return
 
-    const reflectionValue = hasReflectionContent(editReflection)
+    const reflectionValue = hasReflectionContent(editReflection, reflectionFields)
       ? serializeReflection(editReflection)
       : null
 
@@ -195,10 +209,8 @@ export const ReflectionsPage: React.FC = () => {
   }
 
   const handleEnhanceWithAI = async () => {
-    const sourceText = [
-      `Task completed: ${editReflection.taskCompleted}`,
-      `How it went: ${editReflection.howItWent}`,
-    ]
+    const sourceText = reflectionFields
+      .map((field) => `${field.label}: ${formatReflectionFieldValue(field, editReflection.values[field.id])}`)
       .filter((line) => !line.endsWith(': '))
       .join('\n')
 
@@ -243,26 +255,18 @@ export const ReflectionsPage: React.FC = () => {
       'Hours',
       'Category',
       'Paid Status',
-      'Task Completed',
-      'How It Went',
-      'Completed Planned Work',
-      'Needed Help',
-      'Learned Something',
+      ...reflectionFields.map((field) => field.label),
       'Enhanced Reflection',
     ]
 
     const rows = entries.map((entry) => {
-      const reflection = parseReflection(entry.reflection)
+      const reflection = parseReflection(entry.reflection, reflectionFields)
       return [
         format(parseISO(entry.date), 'yyyy-MM-dd'),
         entry.hours_worked,
         entry.category || 'General',
         entry.paid ? 'Paid' : 'Unpaid',
-        reflection.taskCompleted,
-        reflection.howItWent,
-        reflection.checklist.completedPlannedWork ? 'Yes' : 'No',
-        reflection.checklist.neededHelp ? 'Yes' : 'No',
-        reflection.checklist.learnedSomething ? 'Yes' : 'No',
+        ...reflectionFields.map((field) => formatReflectionFieldValue(field, reflection.values[field.id])),
         entry.enhanced_reflection || '',
       ]
     })
@@ -311,6 +315,12 @@ export const ReflectionsPage: React.FC = () => {
               const displayDate = format(parseISO(group.date), 'MMMM dd, yyyy')
               const categoryLabel = group.categories.slice(0, 2).join(' • ')
               const extraCategories = group.categories.length > 2 ? ` +${group.categories.length - 2}` : ''
+              const previewFields = reflectionFields
+                .filter((field) => {
+                  const value = group.reflection.values[field.id]
+                  return field.type === 'checkbox' ? Boolean(value) : Boolean(String(value ?? '').trim())
+                })
+                .slice(0, 2)
 
               return (
                 <div
@@ -337,11 +347,15 @@ export const ReflectionsPage: React.FC = () => {
                   </div>
 
                   {group.hasReflection ? (
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Task Completed</p>
-                      <p className="text-gray-700 dark:text-gray-300 line-clamp-2">{group.reflection.taskCompleted || 'No task details'}</p>
-                      <p className="text-sm font-medium text-gray-700 dark:text-gray-200 mt-2">How It Went</p>
-                      <p className="text-gray-700 dark:text-gray-300 line-clamp-2">{group.reflection.howItWent || 'No summary yet'}</p>
+                    <div className="space-y-2">
+                      {previewFields.map((field) => (
+                        <div key={field.id}>
+                          <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{field.label}</p>
+                          <p className="text-gray-700 dark:text-gray-300 line-clamp-2">
+                            {formatReflectionFieldValue(field, group.reflection.values[field.id]) || 'No response yet'}
+                          </p>
+                        </div>
+                      ))}
                     </div>
                   ) : (
                     <p className="text-gray-600 dark:text-gray-400">No reflection yet. Click to add one.</p>
@@ -400,67 +414,97 @@ export const ReflectionsPage: React.FC = () => {
       >
         {editingId ? (
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Task Completed</label>
-              <textarea
-                value={editReflection.taskCompleted}
-                onChange={(e) => setEditReflection({ ...editReflection, taskCompleted: e.target.value })}
-                className="input-base w-full h-24 resize-none"
-                placeholder="What tasks did you complete?"
-              />
-            </div>
+            {reflectionFields.map((field) => {
+              const value = editReflection.values[field.id]
 
-            <div>
-              <label className="block text-sm font-medium mb-2">How It Went</label>
-              <textarea
-                value={editReflection.howItWent}
-                onChange={(e) => setEditReflection({ ...editReflection, howItWent: e.target.value })}
-                className="input-base w-full h-24 resize-none"
-                placeholder="How did the shift go?"
-              />
-            </div>
+              return (
+                <div key={field.id}>
+                  <label className="block text-sm font-medium mb-2">
+                    {field.label}
+                    {field.required ? ' *' : ''}
+                  </label>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={editReflection.checklist.completedPlannedWork}
-                  onChange={(e) =>
-                    setEditReflection({
-                      ...editReflection,
-                      checklist: { ...editReflection.checklist, completedPlannedWork: e.target.checked },
-                    })
-                  }
-                />
-                Completed planned work
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={editReflection.checklist.neededHelp}
-                  onChange={(e) =>
-                    setEditReflection({
-                      ...editReflection,
-                      checklist: { ...editReflection.checklist, neededHelp: e.target.checked },
-                    })
-                  }
-                />
-                Needed help
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={editReflection.checklist.learnedSomething}
-                  onChange={(e) =>
-                    setEditReflection({
-                      ...editReflection,
-                      checklist: { ...editReflection.checklist, learnedSomething: e.target.checked },
-                    })
-                  }
-                />
-                Learned something new
-              </label>
-            </div>
+                  {field.type === 'textarea' && (
+                    <textarea
+                      value={typeof value === 'string' ? value : ''}
+                      onChange={(e) =>
+                        setEditReflection({
+                          values: { ...editReflection.values, [field.id]: e.target.value },
+                        })
+                      }
+                      className="input-base w-full h-24 resize-none"
+                      placeholder={field.placeholder || ''}
+                    />
+                  )}
+
+                  {field.type === 'text' && (
+                    <input
+                      type="text"
+                      value={typeof value === 'string' ? value : ''}
+                      onChange={(e) =>
+                        setEditReflection({
+                          values: { ...editReflection.values, [field.id]: e.target.value },
+                        })
+                      }
+                      className="input-base w-full"
+                      placeholder={field.placeholder || ''}
+                    />
+                  )}
+
+                  {field.type === 'number' && (
+                    <input
+                      type="number"
+                      value={typeof value === 'string' ? value : ''}
+                      onChange={(e) =>
+                        setEditReflection({
+                          values: { ...editReflection.values, [field.id]: e.target.value },
+                        })
+                      }
+                      className="input-base w-full"
+                      placeholder={field.placeholder || ''}
+                    />
+                  )}
+
+                  {field.type === 'checkbox' && (
+                    <label className="flex items-center gap-2 text-sm p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(value)}
+                        onChange={(e) =>
+                          setEditReflection({
+                            values: { ...editReflection.values, [field.id]: e.target.checked },
+                          })
+                        }
+                      />
+                      {field.helpText || field.placeholder || field.label}
+                    </label>
+                  )}
+
+                  {field.type === 'select' && (
+                    <select
+                      value={typeof value === 'string' ? value : ''}
+                      onChange={(e) =>
+                        setEditReflection({
+                          values: { ...editReflection.values, [field.id]: e.target.value },
+                        })
+                      }
+                      className="input-base w-full"
+                    >
+                      <option value="">Select an option</option>
+                      {(field.options || []).map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {field.helpText && field.type !== 'checkbox' && (
+                    <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">{field.helpText}</p>
+                  )}
+                </div>
+              )
+            })}
 
             <button
               onClick={handleEnhanceWithAI}
@@ -507,29 +551,15 @@ export const ReflectionsPage: React.FC = () => {
               </p>
             </div>
 
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Task Completed</p>
-              <p className="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{selectedGroup.hasReflection ? selectedGroup.reflection.taskCompleted || 'Not added yet' : 'Not added yet'}</p>
-            </div>
-
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">How It Went</p>
-              <p className="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{selectedGroup.hasReflection ? selectedGroup.reflection.howItWent || 'Not added yet' : 'Not added yet'}</p>
-            </div>
-
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Checklist</p>
-              <div className="flex flex-wrap gap-2 text-sm">
-                <span className={`badge ${selectedGroup.reflection.checklist.completedPlannedWork ? 'badge-success' : 'badge-warning'}`}>
-                  Completed planned work: {selectedGroup.reflection.checklist.completedPlannedWork ? 'Yes' : 'No'}
-                </span>
-                <span className={`badge ${selectedGroup.reflection.checklist.neededHelp ? 'badge-warning' : 'badge-success'}`}>
-                  Needed help: {selectedGroup.reflection.checklist.neededHelp ? 'Yes' : 'No'}
-                </span>
-                <span className={`badge ${selectedGroup.reflection.checklist.learnedSomething ? 'badge-success' : 'badge-warning'}`}>
-                  Learned something new: {selectedGroup.reflection.checklist.learnedSomething ? 'Yes' : 'No'}
-                </span>
-              </div>
+            <div className="space-y-3">
+              {reflectionFields.map((field) => (
+                <div key={field.id}>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{field.label}</p>
+                  <p className="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">
+                    {formatReflectionFieldValue(field, selectedGroup.reflection.values[field.id]) || 'Not added yet'}
+                  </p>
+                </div>
+              ))}
             </div>
 
             {selectedGroup.enhancedReflection && (
