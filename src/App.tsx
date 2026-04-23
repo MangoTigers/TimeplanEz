@@ -12,22 +12,45 @@ import { AnalyticsPage } from '@/pages/AnalyticsPage'
 import { ReflectionsPage } from '@/pages/ReflectionsPage'
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuthStore()
+  const { user, setUser, setSession } = useAuthStore()
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setLoading(false)
-      } else {
+    let isMounted = true
+
+    const initializeAuth = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!isMounted) {
+        return
+      }
+
+      setSession(session)
+      setUser(session?.user ?? null)
+      setLoading(false)
+    }
+
+    initializeAuth().catch(() => {
+      if (isMounted) {
         setLoading(false)
       }
     })
 
-    return () => subscription.unsubscribe()
-  }, [])
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+      setUser(session?.user ?? null)
+      setLoading(false)
+    })
+
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
+  }, [setSession, setUser])
 
   if (loading) {
     return <div>Loading...</div>
