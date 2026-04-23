@@ -6,6 +6,7 @@ import { useToast, Modal } from '@/components/common/UI'
 import { format, parseISO } from 'date-fns'
 import { formatHoursMinutes } from '@/lib/calculations'
 import { ShiftStatusBadge } from '@/components/shifts/ShiftStatusBadge'
+import { Link } from 'react-router-dom'
 
 interface ShiftWithReflection {
   id: string
@@ -190,9 +191,9 @@ export const ReflectionsPage: React.FC = () => {
         ) : (
           <div className="card text-center py-12">
             <p className="text-gray-600 dark:text-gray-400 mb-4">No reflections yet</p>
-            <a href="/log-hours" className="btn-primary">
+            <Link to="/log-hours" className="btn-primary">
               Add your first reflection
-            </a>
+            </Link>
           </div>
         )}
       </div>

@@ -2,7 +2,7 @@ import React from 'react'
 import { useAuthStore, useSettingsStore } from '@/store'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/components/common/UI'
-import { useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -89,15 +89,15 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           >
             <nav className="p-4 space-y-2">
               {menuItems.map((item) => (
-                <a
+                <NavLink
                   key={item.href}
-                  href={item.href}
+                  to={item.href}
                   className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors text-gray-700 dark:text-slate-200"
                   onClick={() => setSidebarOpen(false)}
                 >
                   <span className="text-xl">{item.icon}</span>
                   <span className="font-medium">{item.label}</span>
-                </a>
+                </NavLink>
               ))}
             </nav>
           </aside>

@@ -1,5 +1,5 @@
 import React from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ToastProvider } from '@/components/common/UI'
 import { useAuthStore } from '@/store'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
@@ -65,7 +65,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
   }
 
   return (
-    <BrowserRouter basename={routerBase}>
+    <HashRouter basename={routerBase}>
       <ToastProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -112,6 +112,6 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </ToastProvider>
-    </BrowserRouter>
+    </HashRouter>
   )
 }
