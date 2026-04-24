@@ -93,9 +93,80 @@ export const SettingsPage: React.FC = () => {
     { id: 'quick-templates', label: t('settings.quickDurationTemplates') },
     { id: 'account', label: t('settings.accountInformation') },
     { id: 'log-cleanup', label: t('settings.deleteOldLogs') },
-    { id: 'info', label: t('settings.infoTitle') },
   ]
-  const [mobileSectionId, setMobileSectionId] = React.useState(settingsSections[0].id)
+  const [activeSectionId, setActiveSectionId] = React.useState(settingsSections[0].id)
+
+  React.useEffect(() => {
+    let animationFrameId = 0
+
+    const updateActiveSection = () => {
+      const viewportTopOffset = 140
+      const sectionTopCandidates = settingsSections
+        .map((section) => {
+          const element = document.getElementById(section.id)
+          if (!element) {
+            return null
+          }
+
+          const rect = element.getBoundingClientRect()
+          return {
+            id: section.id,
+            label: section.label,
+            top: rect.top,
+            bottom: rect.bottom,
+            distance: Math.abs(rect.top - viewportTopOffset),
+            containsTop: rect.top <= viewportTopOffset && rect.bottom >= viewportTopOffset,
+          }
+        })
+        .filter(Boolean) as Array<{
+        id: string
+        label: string
+        top: number
+        bottom: number
+        distance: number
+        containsTop: boolean
+      }>
+
+      if (!sectionTopCandidates.length) {
+        return
+      }
+
+      const containingSection = sectionTopCandidates.find((section) => section.containsTop)
+      if (containingSection) {
+        setActiveSectionId(containingSection.id)
+        return
+      }
+
+      const nextSection = sectionTopCandidates
+        .filter((section) => section.top > viewportTopOffset)
+        .sort((left, right) => left.distance - right.distance)[0]
+
+      if (nextSection) {
+        setActiveSectionId(nextSection.id)
+        return
+      }
+
+      const lastSection = sectionTopCandidates[sectionTopCandidates.length - 1]
+      if (lastSection) {
+        setActiveSectionId(lastSection.id)
+      }
+    }
+
+    const scheduleUpdate = () => {
+      cancelAnimationFrame(animationFrameId)
+      animationFrameId = window.requestAnimationFrame(updateActiveSection)
+    }
+
+    scheduleUpdate()
+    window.addEventListener('scroll', scheduleUpdate, { passive: true })
+    window.addEventListener('resize', scheduleUpdate)
+
+    return () => {
+      cancelAnimationFrame(animationFrameId)
+      window.removeEventListener('scroll', scheduleUpdate)
+      window.removeEventListener('resize', scheduleUpdate)
+    }
+  }, [settingsSections])
 
   const quickTemplates = settings?.quick_templates || []
 
@@ -327,6 +398,7 @@ export const SettingsPage: React.FC = () => {
       return
     }
 
+    setActiveSectionId(sectionId)
     section.scrollIntoView({ behavior: 'smooth', block: 'start' })
     window.history.replaceState(null, '', `#${sectionId}`)
   }
@@ -384,8 +456,26 @@ export const SettingsPage: React.FC = () => {
 
                   {formData.use_school_hours_mode && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        {t('settings.schoolHoursPerWeek')}
+                      <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <span>{t('settings.schoolHoursPerWeek')}</span>
+                        <span className="relative inline-flex group">
+                          <button
+                            type="button"
+                            aria-label={t('settings.infoTitle')}
+                            aria-describedby="school-hours-tooltip"
+                            className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-300 bg-white text-[11px] font-semibold text-gray-500 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary-500/60 dark:border-gray-600 dark:bg-slate-900 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:bg-primary-900/30 dark:hover:text-primary-200"
+                          >
+                            ?
+                          </button>
+                          <span
+                            id="school-hours-tooltip"
+                            role="tooltip"
+                            className="pointer-events-none absolute left-1/2 top-full z-20 mt-3 w-80 -translate-x-1/2 translate-y-1 rounded-2xl border border-white/15 bg-slate-950/95 px-4 py-3 text-left text-xs leading-5 text-slate-100 opacity-0 shadow-2xl backdrop-blur-md transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100 dark:border-slate-700/70"
+                          >
+                            <span className="absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border-l border-t border-white/15 bg-slate-950/95 dark:border-slate-700/70" />
+                            {t('settings.infoBody')}
+                          </span>
+                        </span>
                       </label>
                       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                         <DurationInput
@@ -818,13 +908,6 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
 
-            {/* Info Box */}
-            <div id="info" className="card border-2 border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20 scroll-mt-24">
-          <p className="text-sm text-primary-900 dark:text-primary-200">
-            💡 <strong>{t('settings.infoTitle')}:</strong> {t('settings.infoBody')}
-          </p>
-        </div>
-
           </div>
 
           <aside className="hidden xl:block xl:sticky xl:top-24 self-start">
@@ -838,7 +921,12 @@ export const SettingsPage: React.FC = () => {
                     key={section.id}
                     type="button"
                     onClick={() => jumpToSection(section.id)}
-                    className="block px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                    aria-current={section.id === activeSectionId ? 'true' : undefined}
+                    className={`block w-full px-3 py-2 rounded-lg text-sm font-medium text-left transition-colors ${
+                      section.id === activeSectionId
+                        ? 'bg-primary-100 text-primary-900 dark:bg-primary-900/30 dark:text-primary-100'
+                        : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-800'
+                    }`}
                   >
                     {section.label}
                   </button>
@@ -860,8 +948,8 @@ export const SettingsPage: React.FC = () => {
             <div className="card rounded-none border-x-0 border-b-0 p-3 shadow-lg">
               <div className="grid grid-cols-[1fr_auto] gap-2">
                 <select
-                  value={mobileSectionId}
-                  onChange={(e) => setMobileSectionId(e.target.value)}
+                  value={activeSectionId}
+                  onChange={(e) => jumpToSection(e.target.value)}
                   className="input-base w-full"
                 >
                   {settingsSections.map((section) => (
@@ -872,7 +960,7 @@ export const SettingsPage: React.FC = () => {
                 </select>
                 <button
                   type="button"
-                  onClick={() => jumpToSection(mobileSectionId)}
+                  onClick={() => jumpToSection(activeSectionId)}
                   className="btn-secondary whitespace-nowrap"
                 >
                   {t('settings.jump')}

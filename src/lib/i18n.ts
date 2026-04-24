@@ -144,6 +144,7 @@ const translations: TranslationMap = {
     'settings.infoTitle': 'Slik fungerer det',
     'settings.infoBody': 'Timer markeres automatisk som betalte eller ubetalte basert pa skoletimer-innstillingen din. Alle timer utover ukekvoten for skoletimer markeres som betalte og telles med i inntekten din. Du kan overstyre enkeltvakter manuelt ved behov.',
     'settings.quickJump': 'Hurtighopp',
+    'settings.currentSection': 'Ser nå på',
     'settings.jump': 'Hopp',
     'settings.saveAll': 'Lagre alle innstillinger',
 
@@ -352,6 +353,7 @@ const translations: TranslationMap = {
     'settings.infoTitle': 'How it works',
     'settings.infoBody': 'Hours are automatically marked as paid or unpaid based on your school hours setting. Any hours beyond your weekly school hours quota are marked as paid and contribute to your earnings. You can manually override individual shifts if needed.',
     'settings.quickJump': 'Quick Jump',
+    'settings.currentSection': 'Viewing now',
     'settings.jump': 'Jump',
     'settings.saveAll': 'Save All Settings',
 
@@ -560,6 +562,7 @@ const translations: TranslationMap = {
     'settings.infoTitle': 'Sa fungerar det',
     'settings.infoBody': 'Timmar markeras automatiskt som betalda eller obetalda baserat pa din skoltid-installning. Alla timmar utover din veckovisa skoltidkvot markeras som betalda och raknas med i din intakt. Du kan overstyra enskilda pass manuellt vid behov.',
     'settings.quickJump': 'Snabbhopp',
+    'settings.currentSection': 'Visar nu',
     'settings.jump': 'Hoppa',
     'settings.saveAll': 'Spara alla installningar',
 
