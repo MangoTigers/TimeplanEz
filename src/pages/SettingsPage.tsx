@@ -13,12 +13,14 @@ import {
   type ReflectionFieldConfig,
   type ReflectionFieldType,
 } from '@/lib/reflections'
+import { appLanguageOptions, useTranslation } from '@/lib/i18n'
 
 interface SettingsFormData {
   school_hours_per_week: number
   use_school_hours_mode: boolean
   hourly_rate: number
   currency: string
+  language: 'no' | 'en' | 'sv'
   openai_api_key: string
   notifications_enabled: boolean
   email_digest_enabled: boolean
@@ -30,6 +32,7 @@ export const SettingsPage: React.FC = () => {
   const { user } = useAuthStore()
   const { shifts, setShifts } = useShiftStore()
   const { settings, updateSettings, setQuickTemplates } = useSettingsStore()
+  const { t } = useTranslation()
   const toast = useToast()
   const [loading, setLoading] = React.useState(false)
   const [deleteBeforeDate, setDeleteBeforeDate] = React.useState('')
@@ -45,6 +48,7 @@ export const SettingsPage: React.FC = () => {
     use_school_hours_mode: settings?.use_school_hours_mode ?? true,
     hourly_rate: settings?.hourly_rate || 120,
     currency: settings?.currency || 'NOK',
+    language: settings?.language || 'no',
     openai_api_key: settings?.openai_api_key || '',
     notifications_enabled: settings?.notifications_enabled || true,
     email_digest_enabled: settings?.email_digest_enabled || true,
@@ -64,6 +68,7 @@ export const SettingsPage: React.FC = () => {
       use_school_hours_mode: settings.use_school_hours_mode ?? true,
       hourly_rate: settings.hourly_rate,
       currency: settings.currency,
+      language: settings.language || 'no',
       openai_api_key: settings.openai_api_key ?? '',
       notifications_enabled: settings.notifications_enabled,
       email_digest_enabled: settings.email_digest_enabled,
@@ -79,15 +84,16 @@ export const SettingsPage: React.FC = () => {
   const reflectionFields = React.useMemo(() => normalizeReflectionFields(formData.reflection_fields), [formData.reflection_fields])
 
   const settingsSections = [
-    { id: 'work-hours', label: 'Work Hours' },
-    { id: 'custom-categories', label: 'Categories' },
-    { id: 'notifications', label: 'Notifications' },
-    { id: 'ai-settings', label: 'AI Settings' },
-    { id: 'reflection-fields', label: 'Reflections' },
-    { id: 'quick-templates', label: 'Quick Templates' },
-    { id: 'account', label: 'Account' },
-    { id: 'log-cleanup', label: 'Log Cleanup' },
-    { id: 'info', label: 'Info' },
+    { id: 'language', label: t('settings.language') },
+    { id: 'work-hours', label: t('settings.workHoursConfiguration') },
+    { id: 'custom-categories', label: t('settings.customCategories') },
+    { id: 'notifications', label: t('settings.notifications') },
+    { id: 'ai-settings', label: t('settings.aiSettings') },
+    { id: 'reflection-fields', label: t('settings.reflectionBuilder') },
+    { id: 'quick-templates', label: t('settings.quickDurationTemplates') },
+    { id: 'account', label: t('settings.accountInformation') },
+    { id: 'log-cleanup', label: t('settings.deleteOldLogs') },
+    { id: 'info', label: t('settings.infoTitle') },
   ]
   const [mobileSectionId, setMobileSectionId] = React.useState(settingsSections[0].id)
 
@@ -96,7 +102,7 @@ export const SettingsPage: React.FC = () => {
   const handleAddTemplate = () => {
     const totalMinutes = Math.max(0, templateHours * 60 + templateMinutes)
     if (totalMinutes <= 0) {
-      toast.showToast({ type: 'warning', message: 'Template duration must be at least 1 minute.' })
+      toast.showToast({ type: 'warning', message: t('settings.quickDurationTemplatesHelp') })
       return
     }
 
@@ -109,7 +115,7 @@ export const SettingsPage: React.FC = () => {
 
     const updated = [...quickTemplates, template]
     setQuickTemplates(updated)
-    toast.showToast({ type: 'success', message: 'Template added.' })
+    toast.showToast({ type: 'success', message: t('settings.addTemplate') })
     setTemplateLabel('')
     setTemplateHours(0)
     setTemplateMinutes(0)
@@ -118,7 +124,7 @@ export const SettingsPage: React.FC = () => {
   const handleDeleteTemplate = (templateId: string) => {
     const updated = quickTemplates.filter((template) => template.id !== templateId)
     setQuickTemplates(updated)
-    toast.showToast({ type: 'success', message: 'Template removed.' })
+    toast.showToast({ type: 'success', message: t('settings.remove') })
   }
 
   const persistSettings = async () => {
@@ -158,12 +164,12 @@ export const SettingsPage: React.FC = () => {
       if (optionalError) {
         toast.showToast({
           type: 'warning',
-          message: 'Core settings saved. Run latest DB migration to enable AI key and school-hours mode toggle.',
+          message: t('settings.openAiApiKeyHelp'),
         })
       }
 
       updateSettings({ ...formData, reflection_fields: reflectionFields })
-      toast.showToast({ type: 'success', message: 'Settings saved successfully!' })
+      toast.showToast({ type: 'success', message: t('settings.saveAll') })
     } catch (error: any) {
       toast.showToast({ type: 'error', message: error.message })
     } finally {
@@ -182,7 +188,7 @@ export const SettingsPage: React.FC = () => {
 
     const exists = formData.custom_categories.some((category) => category.toLowerCase() === value.toLowerCase())
     if (exists) {
-      toast.showToast({ type: 'warning', message: 'Category already exists.' })
+      toast.showToast({ type: 'warning', message: t('settings.customCategories') })
       return
     }
 
@@ -193,7 +199,7 @@ export const SettingsPage: React.FC = () => {
   const handleRemoveCategory = (categoryToRemove: string) => {
     const next = formData.custom_categories.filter((category) => category !== categoryToRemove)
     if (!next.length) {
-      toast.showToast({ type: 'warning', message: 'At least one category is required.' })
+      toast.showToast({ type: 'warning', message: t('settings.customCategories') })
       return
     }
     setFormData({ ...formData, custom_categories: next })
@@ -202,7 +208,7 @@ export const SettingsPage: React.FC = () => {
   const handleAddReflectionField = () => {
     const label = newReflectionFieldLabel.trim()
     if (!label) {
-      toast.showToast({ type: 'warning', message: 'Reflection field title is required.' })
+      toast.showToast({ type: 'warning', message: t('settings.newFieldTitle') })
       return
     }
 
@@ -265,7 +271,7 @@ export const SettingsPage: React.FC = () => {
 
   const handleRemoveReflectionField = (fieldId: string) => {
     if (reflectionFields.length <= 1) {
-      toast.showToast({ type: 'warning', message: 'At least one reflection field is required.' })
+      toast.showToast({ type: 'warning', message: t('settings.reflectionBuilder') })
       return
     }
 
@@ -284,7 +290,7 @@ export const SettingsPage: React.FC = () => {
 
   const handleDeleteOldLogs = async () => {
     if (!user || !deleteBeforeDate) {
-      toast.showToast({ type: 'warning', message: 'Pick a cutoff date first.' })
+      toast.showToast({ type: 'warning', message: t('settings.deleteBefore') })
       return
     }
 
@@ -305,11 +311,11 @@ export const SettingsPage: React.FC = () => {
 
       toast.showToast({
         type: 'success',
-        message: `Deleted ${deletedIds.size} old log${deletedIds.size === 1 ? '' : 's'}.`,
+        message: `${deletedIds.size} ${t('settings.deleteOldLogsButton')}`,
       })
       setDeleteBeforeDate('')
     } catch (error: any) {
-      toast.showToast({ type: 'error', message: error.message || 'Failed to delete old logs.' })
+      toast.showToast({ type: 'error', message: error.message || t('settings.deleteOldLogsButton') })
     } finally {
       setDeletingLogs(false)
     }
@@ -330,12 +336,34 @@ export const SettingsPage: React.FC = () => {
       <div className="max-w-7xl mx-auto pb-32 xl:pb-0">
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_18rem] gap-8 items-start">
           <div className="space-y-8">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Settings</h1>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{t('settings.pageTitle')}</h1>
 
             <form id={settingsFormId} onSubmit={handleSave} className="space-y-8">
+              {/* Language */}
+              <div id="language" className="card scroll-mt-24">
+                <h2 className="text-xl font-bold mb-6">{t('settings.language')}</h2>
+                <div className="space-y-3 max-w-xl">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {t('settings.language')}
+                  </label>
+                  <select
+                    value={formData.language}
+                    onChange={(e) => setFormData({ ...formData, language: e.target.value as 'no' | 'en' | 'sv' })}
+                    className="input-base w-full max-w-xs"
+                  >
+                    {appLanguageOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {t(option.labelKey)}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">{t('settings.languageHelp')}</p>
+                </div>
+              </div>
+
               {/* Work Hours Settings */}
               <div id="work-hours" className="card scroll-mt-24">
-                <h2 className="text-xl font-bold mb-6">Work Hours Configuration</h2>
+                <h2 className="text-xl font-bold mb-6">{t('settings.workHoursConfiguration')}</h2>
                 <div className="space-y-6">
                   <label className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                     <input
@@ -347,9 +375,9 @@ export const SettingsPage: React.FC = () => {
                       className="w-4 h-4"
                     />
                     <div>
-                      <p className="font-medium">Enable School Hours Mode</p>
+                      <p className="font-medium">{t('settings.enableSchoolHoursMode')}</p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        When enabled, auto mode can split shifts into unpaid school hours and paid hours.
+                        {t('settings.enableSchoolHoursModeHelp')}
                       </p>
                     </div>
                   </label>
@@ -357,7 +385,7 @@ export const SettingsPage: React.FC = () => {
                   {formData.use_school_hours_mode && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        School Hours Per Week
+                        {t('settings.schoolHoursPerWeek')}
                       </label>
                       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                         <DurationInput
@@ -378,7 +406,7 @@ export const SettingsPage: React.FC = () => {
                           }
                         />
                         <p className="text-sm text-gray-600 dark:text-gray-400">
-                          Unpaid school-time quota per week ({formatHoursMinutes(formData.school_hours_per_week)})
+                          {t('settings.schoolHoursQuota', { hours: formatHoursMinutes(formData.school_hours_per_week) })}
                         </p>
                       </div>
                     </div>
@@ -386,7 +414,7 @@ export const SettingsPage: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Hourly Rate for Paid Work
+                      {t('settings.hourlyRate')}
                     </label>
                     <div className="flex items-center gap-2">
                       <span className="text-xl">{formData.currency}</span>
@@ -403,16 +431,16 @@ export const SettingsPage: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Currency
+                      {t('settings.currency')}
                     </label>
                     <select
                       value={formData.currency}
                       onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
                       className="input-base w-full max-w-xs"
                     >
-                      <option value="NOK">Norwegian Krone (kr)</option>
-                      <option value="EUR">Euro (€)</option>
-                      <option value="USD">US Dollar ($)</option>
+                      <option value="NOK">{t('settings.currencyNok')}</option>
+                      <option value="EUR">{t('settings.currencyEur')}</option>
+                      <option value="USD">{t('settings.currencyUsd')}</option>
                     </select>
                   </div>
                 </div>
@@ -420,17 +448,17 @@ export const SettingsPage: React.FC = () => {
 
               {/* Categories */}
               <div id="custom-categories" className="card scroll-mt-24">
-                <h2 className="text-xl font-bold mb-6">Custom Categories</h2>
+                <h2 className="text-xl font-bold mb-6">{t('settings.customCategories')}</h2>
                 <div className="flex flex-col sm:flex-row gap-2 mb-4">
                   <input
                     type="text"
                     value={newCategory}
                     onChange={(e) => setNewCategory(e.target.value)}
                     className="input-base flex-1"
-                    placeholder="Add category name"
+                    placeholder={t('settings.addCategoryPlaceholder')}
                   />
                   <button type="button" onClick={handleAddCategory} className="btn-secondary">
-                    Add
+                    {t('settings.add')}
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-2 mb-2">
@@ -441,7 +469,7 @@ export const SettingsPage: React.FC = () => {
                         type="button"
                         onClick={() => handleRemoveCategory(category)}
                         className="text-danger-600 dark:text-danger-400"
-                        title={`Remove ${category}`}
+                        title={t('settings.removeCategory', { category })}
                       >
                         ✕
                       </button>
@@ -452,7 +480,7 @@ export const SettingsPage: React.FC = () => {
 
               {/* Notification Settings */}
               <div id="notifications" className="card scroll-mt-24">
-                <h2 className="text-xl font-bold mb-6">Notifications</h2>
+                <h2 className="text-xl font-bold mb-6">{t('settings.notifications')}</h2>
                 <div className="space-y-4">
                   <label className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                     <input
@@ -464,9 +492,9 @@ export const SettingsPage: React.FC = () => {
                       className="w-4 h-4"
                     />
                     <div>
-                      <p className="font-medium">Browser Notifications</p>
+                      <p className="font-medium">{t('settings.browserNotifications')}</p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Get notifications when it's time to log hours
+                        {t('settings.browserNotificationsHelp')}
                       </p>
                     </div>
                   </label>
@@ -481,9 +509,9 @@ export const SettingsPage: React.FC = () => {
                       className="w-4 h-4"
                     />
                     <div>
-                      <p className="font-medium">Weekly Email Digest</p>
+                      <p className="font-medium">{t('settings.weeklyEmailDigest')}</p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Receive weekly summary of your hours and earnings every Sunday
+                        {t('settings.weeklyEmailDigestHelp')}
                       </p>
                     </div>
                   </label>
@@ -492,11 +520,11 @@ export const SettingsPage: React.FC = () => {
 
               {/* AI Settings */}
               <div id="ai-settings" className="card scroll-mt-24">
-                <h2 className="text-xl font-bold mb-6">AI Settings</h2>
+                <h2 className="text-xl font-bold mb-6">{t('settings.aiSettings')}</h2>
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      OpenAI API Key
+                      {t('settings.openAiApiKey')}
                     </label>
                     <input
                       type="password"
@@ -507,7 +535,7 @@ export const SettingsPage: React.FC = () => {
                       autoComplete="off"
                     />
                     <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
-                      Used only for your AI reflection enhancement requests.
+                      {t('settings.openAiApiKeyHelp')}
                     </p>
                   </div>
                 </div>
@@ -515,9 +543,9 @@ export const SettingsPage: React.FC = () => {
             </form>
 
             <div id="reflection-fields" className="card scroll-mt-24">
-              <h2 className="text-xl font-bold mb-3">Reflection Builder</h2>
+              <h2 className="text-xl font-bold mb-3">{t('settings.reflectionBuilder')}</h2>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-5">
-                Choose exactly what appears in each reflection. You can mix text boxes, longer notes, checkboxes, numbers, and dropdowns.
+                {t('settings.reflectionBuilderHelp')}
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_12rem_auto] gap-3 mb-4">
@@ -526,21 +554,21 @@ export const SettingsPage: React.FC = () => {
                   value={newReflectionFieldLabel}
                   onChange={(e) => setNewReflectionFieldLabel(e.target.value)}
                   className="input-base w-full"
-                  placeholder="New field title"
+                  placeholder={t('settings.newFieldTitle')}
                 />
                 <select
                   value={newReflectionFieldType}
                   onChange={(e) => setNewReflectionFieldType(e.target.value as ReflectionFieldType)}
                   className="input-base w-full"
                 >
-                  <option value="textarea">Long text</option>
-                  <option value="text">Short text</option>
-                  <option value="checkbox">Checkbox</option>
-                  <option value="number">Number</option>
-                  <option value="select">Dropdown</option>
+                  <option value="textarea">{t('settings.longText')}</option>
+                  <option value="text">{t('settings.shortText')}</option>
+                  <option value="checkbox">{t('settings.checkbox')}</option>
+                  <option value="number">{t('settings.number')}</option>
+                  <option value="select">{t('settings.dropdown')}</option>
                 </select>
                 <button type="button" onClick={handleAddReflectionField} className="btn-secondary whitespace-nowrap">
-                  Add Field
+                  {t('settings.addField')}
                 </button>
               </div>
 
@@ -555,7 +583,7 @@ export const SettingsPage: React.FC = () => {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
                               <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
-                                Title
+                                {t('settings.title')}
                               </label>
                               <input
                                 type="text"
@@ -566,7 +594,7 @@ export const SettingsPage: React.FC = () => {
                             </div>
                             <div>
                               <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
-                                Field Type
+                                {t('settings.fieldType')}
                               </label>
                               <select
                                 value={field.type}
@@ -583,11 +611,11 @@ export const SettingsPage: React.FC = () => {
                                 }
                                 className="input-base w-full"
                               >
-                                <option value="textarea">Long text</option>
-                                <option value="text">Short text</option>
-                                <option value="checkbox">Checkbox</option>
-                                <option value="number">Number</option>
-                                <option value="select">Dropdown</option>
+                                <option value="textarea">{t('settings.longText')}</option>
+                                <option value="text">{t('settings.shortText')}</option>
+                                <option value="checkbox">{t('settings.checkbox')}</option>
+                                <option value="number">{t('settings.number')}</option>
+                                <option value="select">{t('settings.dropdown')}</option>
                               </select>
                             </div>
                           </div>
@@ -595,27 +623,27 @@ export const SettingsPage: React.FC = () => {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
                               <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
-                                Placeholder
+                                {t('settings.placeholder')}
                               </label>
                               <input
                                 type="text"
                                 value={field.placeholder || ''}
                                 onChange={(e) => handleUpdateReflectionField(field.id, { placeholder: e.target.value })}
                                 className="input-base w-full"
-                                placeholder="Shown in text fields"
+                                placeholder={t('settings.placeholderHint')}
                                 disabled={field.type === 'checkbox'}
                               />
                             </div>
                             <div>
                               <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
-                                Helper text
+                                {t('settings.helperText')}
                               </label>
                               <input
                                 type="text"
                                 value={field.helpText || ''}
                                 onChange={(e) => handleUpdateReflectionField(field.id, { helpText: e.target.value })}
                                 className="input-base w-full"
-                                placeholder="Small hint below the field"
+                                placeholder={t('settings.helperTextHint')}
                               />
                             </div>
                           </div>
@@ -626,13 +654,13 @@ export const SettingsPage: React.FC = () => {
                               checked={Boolean(field.required)}
                               onChange={(e) => handleUpdateReflectionField(field.id, { required: e.target.checked })}
                             />
-                            Required
+                            {t('settings.required')}
                           </label>
 
                           {field.type === 'select' && (
                             <div>
                               <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
-                                Dropdown options
+                                {t('settings.dropdownOptions')}
                               </label>
                               <textarea
                                 value={optionsText}
@@ -645,13 +673,13 @@ export const SettingsPage: React.FC = () => {
                                   })
                                 }
                                 className="input-base w-full h-28 resize-none"
-                                placeholder="One option per line"
+                                placeholder={t('settings.oneOptionPerLine')}
                               />
                             </div>
                           )}
 
                           <p className="text-xs text-gray-500 dark:text-gray-400">
-                            Field ID: <span className="font-mono">{field.id}</span>
+                            {t('settings.fieldId')}: <span className="font-mono">{field.id}</span>
                           </p>
                         </div>
 
@@ -677,7 +705,7 @@ export const SettingsPage: React.FC = () => {
                             onClick={() => handleRemoveReflectionField(field.id)}
                             className="btn-danger flex-1 lg:flex-none"
                           >
-                            Remove
+                            {t('settings.remove')}
                           </button>
                         </div>
                       </div>
@@ -688,16 +716,16 @@ export const SettingsPage: React.FC = () => {
 
               <div className="mt-4 flex flex-col sm:flex-row gap-2">
                 <button type="button" onClick={handleResetReflectionFields} className="btn-secondary">
-                  Reset to Default Reflection Fields
+                  {t('settings.resetReflectionFields')}
                 </button>
               </div>
             </div>
 
             {/* Quick Templates */}
             <div id="quick-templates" className="card scroll-mt-24">
-          <h2 className="text-xl font-bold mb-6">Quick Duration Templates</h2>
+          <h2 className="text-xl font-bold mb-6">{t('settings.quickDurationTemplates')}</h2>
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            These templates appear on the Log Hours page for one-click duration selection.
+            {t('settings.quickDurationTemplatesHelp')}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
@@ -706,7 +734,7 @@ export const SettingsPage: React.FC = () => {
               value={templateLabel}
               onChange={(e) => setTemplateLabel(e.target.value)}
               className="input-base md:col-span-2"
-              placeholder="Template label (optional, e.g. Quick Shift)"
+              placeholder={t('settings.templateLabelPlaceholder')}
             />
             <div className="md:col-span-2">
               <DurationInput
@@ -719,7 +747,7 @@ export const SettingsPage: React.FC = () => {
           </div>
 
               <button type="button" onClick={handleAddTemplate} className="btn-secondary w-full sm:w-auto">
-            + Add Template
+            {t('settings.addTemplate')}
           </button>
 
           <div className="mt-4 space-y-2">
@@ -734,28 +762,28 @@ export const SettingsPage: React.FC = () => {
                   className="btn-danger w-full sm:w-auto"
                   onClick={() => handleDeleteTemplate(template.id)}
                 >
-                  Remove
+                  {t('settings.remove')}
                 </button>
               </div>
             ))}
             {!quickTemplates.length && (
-              <p className="text-sm text-gray-600 dark:text-gray-400">No templates yet.</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">{t('settings.noTemplatesYet')}</p>
             )}
           </div>
         </div>
 
             {/* Account Settings */}
             <div id="account" className="card scroll-mt-24">
-          <h2 className="text-xl font-bold mb-6">Account Information</h2>
+          <h2 className="text-xl font-bold mb-6">{t('settings.accountInformation')}</h2>
           <div className="space-y-4">
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Email</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">{t('settings.email')}</p>
               <p className="font-medium text-gray-900 dark:text-white">{user?.email}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Account Created</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">{t('settings.accountCreated')}</p>
               <p className="font-medium text-gray-900 dark:text-white">
-                {user?.created_at ? new Date(user.created_at).toLocaleDateString('nb-NO') : 'N/A'}
+                {user?.created_at ? new Date(user.created_at).toLocaleDateString('nb-NO') : t('common.notAvailable')}
               </p>
             </div>
           </div>
@@ -763,14 +791,14 @@ export const SettingsPage: React.FC = () => {
 
             {/* Log Cleanup */}
             <div id="log-cleanup" className="card border border-danger-200 dark:border-danger-900/40 bg-danger-50/60 dark:bg-danger-900/10 scroll-mt-24">
-          <h2 className="text-xl font-bold mb-3 text-danger-700 dark:text-danger-300">Delete Old Logs</h2>
+            <h2 className="text-xl font-bold mb-3 text-danger-700 dark:text-danger-300">{t('settings.deleteOldLogs')}</h2>
           <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
-            Remove all shifts logged before a selected date. This only affects your own logs.
+              {t('settings.deleteOldLogsHelp')}
           </p>
           <div className="flex flex-col md:flex-row md:items-end gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Delete logs before
+                  {t('settings.deleteBefore')}
               </label>
               <input
                 type="date"
@@ -785,7 +813,7 @@ export const SettingsPage: React.FC = () => {
               disabled={deletingLogs || !deleteBeforeDate}
               className="btn-danger w-full md:w-auto"
             >
-              {deletingLogs ? 'Deleting...' : 'Delete Old Logs'}
+              {deletingLogs ? t('settings.deleteing') : t('settings.deleteOldLogsButton')}
             </button>
           </div>
         </div>
@@ -793,9 +821,7 @@ export const SettingsPage: React.FC = () => {
             {/* Info Box */}
             <div id="info" className="card border-2 border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20 scroll-mt-24">
           <p className="text-sm text-primary-900 dark:text-primary-200">
-            💡 <strong>How it works:</strong> Hours are automatically marked as paid or unpaid based on your school hours setting.
-            Any hours beyond your weekly school hours quota are marked as paid and contribute to your earnings. You can manually
-            override individual shifts if needed.
+            💡 <strong>{t('settings.infoTitle')}:</strong> {t('settings.infoBody')}
           </p>
         </div>
 
@@ -804,7 +830,7 @@ export const SettingsPage: React.FC = () => {
           <aside className="hidden xl:block xl:sticky xl:top-24 self-start">
             <div className="card p-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-3">
-                Quick Jump
+                {t('settings.quickJump')}
               </h2>
               <nav className="space-y-1">
                 {settingsSections.map((section) => (
@@ -825,7 +851,7 @@ export const SettingsPage: React.FC = () => {
                 disabled={loading}
                 className="btn-primary w-full mt-4"
               >
-                {loading ? 'Saving...' : 'Save All Settings'}
+                {loading ? t('common.saving') : t('settings.saveAll')}
               </button>
             </div>
           </aside>
@@ -849,7 +875,7 @@ export const SettingsPage: React.FC = () => {
                   onClick={() => jumpToSection(mobileSectionId)}
                   className="btn-secondary whitespace-nowrap"
                 >
-                  Jump
+                  {t('settings.jump')}
                 </button>
               </div>
               <button
@@ -858,7 +884,7 @@ export const SettingsPage: React.FC = () => {
                 disabled={loading}
                 className="btn-primary w-full mt-3"
               >
-                {loading ? 'Saving...' : 'Save All Settings'}
+                {loading ? t('common.saving') : t('settings.saveAll')}
               </button>
             </div>
           </div>

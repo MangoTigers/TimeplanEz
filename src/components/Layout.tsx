@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { LogHoursForm } from '@/components/shifts/LogHoursForm'
 import { Modal, useToast } from '@/components/common/UI'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { useTranslation } from '@/lib/i18n'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -18,6 +19,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = React.useState(false)
   const [theme, setTheme] = React.useState(settings?.theme || 'light')
   const isLogModalOpen = new URLSearchParams(location.search).get('log') === 'true'
+  const { t } = useTranslation()
 
   const openLogModal = () => {
     const params = new URLSearchParams(location.search)
@@ -45,17 +47,17 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       await supabase.auth.signOut()
       logout()
       navigate('/login')
-      toast.showToast({ type: 'success', message: 'Logged out successfully' })
+      toast.showToast({ type: 'success', message: t('layout.logoutSuccess') })
     } catch (error) {
-      toast.showToast({ type: 'error', message: 'Failed to logout' })
+      toast.showToast({ type: 'error', message: t('layout.logoutError') })
     }
   }
 
   const menuItems = [
-    { label: 'Dashboard', href: '/dashboard', icon: '📊' },
-    { label: 'Analytics', href: '/analytics', icon: '📈' },
-    { label: 'Reflections', href: '/reflections', icon: '📝' },
-    { label: 'Settings', href: '/settings', icon: '⚙️' },
+    { label: t('layout.dashboard'), href: '/dashboard', icon: '📊' },
+    { label: t('layout.analytics'), href: '/analytics', icon: '📈' },
+    { label: t('layout.reflections'), href: '/reflections', icon: '📝' },
+    { label: t('layout.settings'), href: '/settings', icon: '⚙️' },
   ]
 
   return (
@@ -78,7 +80,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               <button
                 onClick={toggleTheme}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-                title="Toggle theme"
+                title={t('layout.toggleTheme')}
               >
                 {theme === 'light' ? '🌙' : '☀️'}
               </button>
@@ -89,7 +91,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                   onClick={handleLogout}
                   className="px-3 py-1 text-sm bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
                 >
-                  Logout
+                  {t('layout.logout')}
                 </button>
               </div>
             </div>
@@ -110,7 +112,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors text-gray-700 dark:text-slate-200"
               >
                 <span className="text-xl">➕</span>
-                <span className="font-medium">Log Hours</span>
+                <span className="font-medium">{t('layout.logHours')}</span>
               </button>
               {menuItems.map((item) => (
                 <NavLink
@@ -133,8 +135,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
       </div>
 
-      <Modal isOpen={isLogModalOpen} onClose={closeLogModal} title="Log Hours" maxWidthClass="max-w-3xl">
-        <LogHoursForm onSaved={closeLogModal} submitLabel="Save Hours" />
+      <Modal isOpen={isLogModalOpen} onClose={closeLogModal} title={t('layout.logHours')} maxWidthClass="max-w-3xl">
+        <LogHoursForm onSaved={closeLogModal} submitLabel={t('layout.saveHours')} />
       </Modal>
     </div>
   )

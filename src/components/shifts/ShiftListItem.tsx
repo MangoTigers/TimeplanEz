@@ -2,6 +2,7 @@ import React from 'react'
 import { format, parseISO } from 'date-fns'
 import { formatHoursMinutes } from '@/lib/calculations'
 import { ShiftStatusBadge } from './ShiftStatusBadge'
+import { useTranslation } from '@/lib/i18n'
 
 interface ShiftListItemProps {
   shift: {
@@ -17,6 +18,8 @@ interface ShiftListItemProps {
 }
 
 export const ShiftListItem: React.FC<ShiftListItemProps> = ({ shift, showDate = true, onEdit, onDelete }) => {
+  const { t } = useTranslation()
+
   return (
     <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
       <div>
@@ -25,8 +28,8 @@ export const ShiftListItem: React.FC<ShiftListItemProps> = ({ shift, showDate = 
         </p>
         <p className="text-sm text-gray-600 dark:text-gray-400">
           {showDate
-            ? `${formatHoursMinutes(shift.hours_worked)} • ${shift.category || 'General'}`
-            : shift.category || 'General'}
+            ? `${formatHoursMinutes(shift.hours_worked)} • ${shift.category || t('common.general')}`
+            : shift.category || t('common.general')}
         </p>
       </div>
 
@@ -34,12 +37,12 @@ export const ShiftListItem: React.FC<ShiftListItemProps> = ({ shift, showDate = 
         <ShiftStatusBadge paid={shift.paid} />
         {onEdit && (
           <button onClick={onEdit} className="btn-secondary px-3 py-1 text-xs">
-            Edit
+            {t('common.edit')}
           </button>
         )}
         {onDelete && (
           <button onClick={onDelete} className="btn-danger px-3 py-1 text-xs">
-            Delete
+            {t('common.delete')}
           </button>
         )}
       </div>

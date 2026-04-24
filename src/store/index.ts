@@ -6,6 +6,7 @@ import {
   normalizeReflectionFields,
   type ReflectionFieldConfig,
 } from '@/lib/reflections'
+import type { AppLanguage } from '@/lib/i18n'
 
 export interface QuickTemplate {
   id: string
@@ -94,6 +95,7 @@ interface UserSettingsStore {
     use_school_hours_mode: boolean
     hourly_rate: number
     currency: string
+    language: AppLanguage
     openai_api_key: string
     theme: 'light' | 'dark'
     notifications_enabled: boolean
@@ -115,6 +117,7 @@ export const useSettingsStore = create<UserSettingsStore>()(
         use_school_hours_mode: true,
         hourly_rate: 120,
         currency: 'NOK',
+        language: 'no',
         openai_api_key: '',
         theme: 'light',
         notifications_enabled: true,
@@ -124,13 +127,14 @@ export const useSettingsStore = create<UserSettingsStore>()(
         quick_templates: defaultQuickTemplates,
       },
       setSettings: (settings) =>
-        set({
+        set((state) => ({
           settings: {
             ...settings,
             school_hours_per_week: settings?.school_hours_per_week ?? 20,
             use_school_hours_mode: settings?.use_school_hours_mode ?? true,
             hourly_rate: settings?.hourly_rate ?? 120,
             currency: settings?.currency ?? 'NOK',
+            language: settings?.language ?? state.settings?.language ?? 'no',
             openai_api_key: settings?.openai_api_key ?? '',
             theme: settings?.theme ?? 'light',
             notifications_enabled: settings?.notifications_enabled ?? true,
@@ -145,7 +149,7 @@ export const useSettingsStore = create<UserSettingsStore>()(
               ? settings.quick_templates
               : defaultQuickTemplates,
           },
-        }),
+        })),
       updateSettings: (updates) =>
         set((state) => ({
           settings: state.settings ? { ...state.settings, ...updates } : null,

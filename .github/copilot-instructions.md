@@ -17,6 +17,7 @@
 - Maintain the existing visual language unless a redesign is requested.
 - For forms and settings pages, prefer clear sectioning and obvious save actions.
 - Make destructive actions explicit and safe.
+- Any new user-facing UI text must be added through the language/translation variables (no new hardcoded UI strings) so Norwegian, English, and Swedish stay compatible.
 
 ## Reflections and Hours Rules
 - Reflections are shared per day, not per shift.

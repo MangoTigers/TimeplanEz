@@ -30,6 +30,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, parseISO } from 'date-fns'
+import { useTranslation } from '@/lib/i18n'
 
 interface DayExportRow {
   date: string
@@ -48,6 +49,7 @@ export const AnalyticsPage: React.FC = () => {
   const { shifts, setShifts, deleteShift } = useShiftStore()
   const { settings } = useSettingsStore()
   const toast = useToast()
+  const { t } = useTranslation()
   const reflectionFields = React.useMemo(
     () => normalizeReflectionFields(settings?.reflection_fields?.length ? settings.reflection_fields : defaultReflectionFields),
     [settings?.reflection_fields]
@@ -74,14 +76,14 @@ export const AnalyticsPage: React.FC = () => {
       if (error) throw error
       setShifts(data || [])
     } catch (error: any) {
-      toast.showToast({ type: 'error', message: 'Failed to load shifts' })
+      toast.showToast({ type: 'error', message: t('analytics.failedToLoadShifts') })
     }
   }
 
   const handleDeleteShift = async (shiftId: string) => {
     if (!user) return
 
-    const confirmed = window.confirm('Delete this shift? This cannot be undone.')
+    const confirmed = window.confirm(t('dashboard.deleteConfirm'))
     if (!confirmed) {
       return
     }
@@ -96,9 +98,9 @@ export const AnalyticsPage: React.FC = () => {
       if (error) throw error
 
       deleteShift(shiftId)
-      toast.showToast({ type: 'success', message: 'Shift deleted successfully.' })
+      toast.showToast({ type: 'success', message: t('dashboard.deleteSuccess') })
     } catch (error: any) {
-      toast.showToast({ type: 'error', message: error.message || 'Failed to delete shift.' })
+      toast.showToast({ type: 'error', message: error.message || t('dashboard.deleteFailed') })
     }
   }
 
@@ -131,7 +133,7 @@ export const AnalyticsPage: React.FC = () => {
   const categoryData = Object.entries(
     monthShifts.reduce(
       (acc, shift) => {
-        const category = shift.category || 'General'
+        const category = shift.category || t('common.general')
         acc[category] = (acc[category] || 0) + shift.hours_worked
         return acc
       },
@@ -168,8 +170,8 @@ export const AnalyticsPage: React.FC = () => {
           totalHours,
           paidHours,
           unpaidHours,
-          status: paidHours > 0 && unpaidHours > 0 ? 'Mixed' : paidHours > 0 ? 'Paid' : 'Unpaid',
-          categories: Array.from(new Set(dayShifts.map((shift) => shift.category || 'General'))),
+          status: paidHours > 0 && unpaidHours > 0 ? t('analytics.mixed') : paidHours > 0 ? t('common.paid') : t('common.unpaid'),
+          categories: Array.from(new Set(dayShifts.map((shift) => shift.category || t('common.general')))),
           notes: Array.from(
             new Set(dayShifts.map((shift) => shift.notes?.trim()).filter(Boolean) as string[])
           ).join(' | '),
@@ -182,15 +184,15 @@ export const AnalyticsPage: React.FC = () => {
 
   const handleExportCSV = () => {
     const headers = [
-      'Date',
-      'Total Hours',
-      'Paid Hours',
-      'Unpaid Hours',
-      'Status',
-      'Categories',
-      'Notes',
+      t('analytics.headersDate'),
+      t('analytics.headersTotalHours'),
+      t('dashboard.paidHours'),
+      t('dashboard.unpaidHours'),
+      t('analytics.headersStatus'),
+      t('analytics.headersCategories'),
+      t('analytics.headersNotes'),
       ...reflectionFields.map((field) => field.label),
-      'Enhanced Reflection',
+      t('analytics.headersEnhancedReflection'),
     ]
 
     const rows = dayExportRows.map((day) => [
@@ -225,16 +227,16 @@ export const AnalyticsPage: React.FC = () => {
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
 
-    toast.showToast({ type: 'success', message: 'Export successful!' })
+    toast.showToast({ type: 'success', message: t('analytics.exportSuccess') })
   }
 
   return (
     <Layout>
       <div className="space-y-8">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Analytics</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{t('layout.analytics')}</h1>
           <button onClick={() => setIsExportModalOpen(true)} className="btn-secondary">
-            📥 Export Data
+            📥 {t('analytics.exportData')}
           </button>
         </div>
 
@@ -245,30 +247,30 @@ export const AnalyticsPage: React.FC = () => {
               onClick={() => setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1))}
               className="btn-secondary"
             >
-              ← Previous
+              ← {t('analytics.previous')}
             </button>
             <h2 className="text-xl font-bold">{format(selectedMonth, 'MMMM yyyy')}</h2>
             <button
               onClick={() => setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1))}
               className="btn-secondary"
             >
-              Next →
+              {t('analytics.next')} →
             </button>
           </div>
         </div>
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <StatCard label="Total Hours" value={formatHoursMinutes(totalHours)} />
-          <StatCard label="Paid Hours" value={formatHoursMinutes(totalPaidHours)} valueClassName="text-success-600 dark:text-success-400" />
-          <StatCard label="Unpaid Hours" value={formatHoursMinutes(totalUnpaidHours)} valueClassName="text-warning-600 dark:text-warning-400" />
-          <StatCard label="Total Earnings" value={`${settings?.currency} ${totalEarnings.toFixed(0)}`} valueClassName="text-primary-600 dark:text-primary-400" />
+          <StatCard label={t('dashboard.totalHours')} value={formatHoursMinutes(totalHours)} />
+          <StatCard label={t('dashboard.paidHours')} value={formatHoursMinutes(totalPaidHours)} valueClassName="text-success-600 dark:text-success-400" />
+          <StatCard label={t('dashboard.unpaidHours')} value={formatHoursMinutes(totalUnpaidHours)} valueClassName="text-warning-600 dark:text-warning-400" />
+          <StatCard label={t('analytics.totalEarnings')} value={`${settings?.currency} ${totalEarnings.toFixed(0)}`} valueClassName="text-primary-600 dark:text-primary-400" />
         </div>
 
         {/* Daily Hours Chart */}
         {dailyData.length > 0 && (
           <div className="card">
-            <h2 className="text-lg font-bold mb-4">Daily Hours Overview</h2>
+            <h2 className="text-lg font-bold mb-4">{t('analytics.dailyOverview')}</h2>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={dailyData}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -276,8 +278,8 @@ export const AnalyticsPage: React.FC = () => {
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="paid" fill="#22c55e" name="Paid" />
-                <Bar dataKey="unpaid" fill="#eab308" name="Unpaid" />
+                  <Bar dataKey="paid" fill="#22c55e" name={t('analytics.paid')} />
+                  <Bar dataKey="unpaid" fill="#eab308" name={t('analytics.unpaid')} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -286,7 +288,7 @@ export const AnalyticsPage: React.FC = () => {
         {/* Hourly Trend Chart */}
         {dailyData.length > 0 && (
           <div className="card">
-            <h2 className="text-lg font-bold mb-4">Hours Trend</h2>
+            <h2 className="text-lg font-bold mb-4">{t('analytics.hoursTrend')}</h2>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={dailyData}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -294,8 +296,8 @@ export const AnalyticsPage: React.FC = () => {
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                <Line type="monotone" dataKey="hours" stroke="#0ea5e9" name="Total Hours" />
-                <Line type="monotone" dataKey="paid" stroke="#22c55e" name="Paid Hours" />
+                <Line type="monotone" dataKey="hours" stroke="#0ea5e9" name={t('analytics.totalHoursSeries')} />
+                <Line type="monotone" dataKey="paid" stroke="#22c55e" name={t('analytics.paidHoursSeries')} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -304,7 +306,7 @@ export const AnalyticsPage: React.FC = () => {
         {/* Category Breakdown */}
         {categoryData.length > 0 && (
           <div className="card">
-            <h2 className="text-lg font-bold mb-4">Hours by Category</h2>
+            <h2 className="text-lg font-bold mb-4">{t('analytics.hoursByCategory')}</h2>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
@@ -330,7 +332,7 @@ export const AnalyticsPage: React.FC = () => {
         {/* Weekly Summary Table */}
         {monthShifts.length > 0 && (
           <div className="card">
-            <h2 className="text-lg font-bold mb-4">Shifts This Month</h2>
+            <h2 className="text-lg font-bold mb-4">{t('analytics.shiftsThisMonth')}</h2>
             <ShiftTable
               shifts={monthShifts}
               currency={settings?.currency || 'NOK'}
@@ -345,22 +347,22 @@ export const AnalyticsPage: React.FC = () => {
       <Modal
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
-        title="Export Data"
+        title={t('analytics.exportData')}
         footer={
           <div className="flex gap-2">
             <button onClick={handleExportCSV} className="btn-primary flex-1">
-              📥 Download CSV
+              📥 {t('analytics.downloadCsv')}
             </button>
             <button onClick={() => setIsExportModalOpen(false)} className="btn-secondary flex-1">
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         }
       >
         <div className="space-y-4">
-          <p>Export your data for {format(selectedMonth, 'MMMM yyyy')}</p>
+          <p>{t('analytics.exportMonth', { month: format(selectedMonth, 'MMMM yyyy') })}</p>
           <div className="bg-primary-50 dark:bg-primary-900/20 p-3 rounded-lg text-sm text-primary-900 dark:text-primary-200">
-            The CSV file will include one row per day with total hours, paid/unpaid hours, categories, notes, and the shared reflection columns in one report.
+            {t('analytics.exportDescription')}
           </div>
         </div>
       </Modal>

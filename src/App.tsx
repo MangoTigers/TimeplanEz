@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ToastProvider } from '@/components/common/UI'
 import { useAuthStore, useSettingsStore } from '@/store'
 import { getUserProfile, supabase, isSupabaseConfigured } from '@/lib/supabase'
+import { useTranslation } from '@/lib/i18n'
 
 // Pages
 import { LoginPage } from '@/pages/LoginPage'
@@ -15,6 +16,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   const { user, setUser, setSession } = useAuthStore()
   const { setSettings } = useSettingsStore()
   const [loading, setLoading] = React.useState(true)
+  const { t } = useTranslation()
 
   React.useEffect(() => {
     let isMounted = true
@@ -75,7 +77,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   }, [setSession, setSettings, setUser])
 
   if (loading) {
-    return <div>Loading...</div>
+    return <div>{t('app.loading')}</div>
   }
 
   if (!user) {
@@ -86,20 +88,22 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 }
 
 export default function App() {
+  const { t } = useTranslation()
+
   if (!isSupabaseConfigured) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-950 p-6">
         <div className="max-w-2xl w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">Supabase Setup Required</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">{t('app.supabaseRequired')}</h1>
           <p className="text-gray-700 dark:text-gray-300 mb-4">
-            Create a <strong>.env.local</strong> file in the project root and add:
+            {t('app.supabaseCreateEnv')}
           </p>
           <pre className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 text-sm overflow-x-auto">
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
           </pre>
           <p className="text-gray-700 dark:text-gray-300 mt-4">
-            After saving the file, restart the dev server.
+            {t('app.supabaseRestart')}
           </p>
         </div>
       </div>

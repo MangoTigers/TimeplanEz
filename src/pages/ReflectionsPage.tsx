@@ -16,6 +16,7 @@ import {
   serializeReflection,
   type ReflectionData,
 } from '@/lib/reflections'
+import { useTranslation } from '@/lib/i18n'
 
 interface ShiftWithReflection {
   id: string
@@ -53,6 +54,7 @@ export const ReflectionsPage: React.FC = () => {
   )
   const hasOpenAiKey = Boolean(settings?.openai_api_key?.trim())
   const toast = useToast()
+  const { t } = useTranslation()
 
   const [entries, setEntries] = React.useState<ShiftWithReflection[]>([])
   const [selectedDate, setSelectedDate] = React.useState<string | null>(null)
@@ -286,23 +288,23 @@ export const ReflectionsPage: React.FC = () => {
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
 
-    toast.showToast({ type: 'success', message: 'Reflections exported.' })
+    toast.showToast({ type: 'success', message: t('reflections.exportSuccess') })
   }
 
   return (
     <Layout>
       <div className="space-y-8">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Reflections</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{t('layout.reflections')}</h1>
           <button onClick={handleExportReflectionsCSV} className="btn-secondary">
-            Export Reflections CSV
+            {t('reflections.exportCsv')}
           </button>
         </div>
 
         <div className="card">
           <input
             type="text"
-            placeholder="Search reflections..."
+            placeholder={t('reflections.searchPlaceholder')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="input-base w-full"
@@ -378,13 +380,13 @@ export const ReflectionsPage: React.FC = () => {
           setEditingId(null)
           setEditingDate(null)
         }}
-        title={editingId ? 'Edit Reflection' : 'View Reflection'}
+        title={editingId ? t('reflections.editTitle') : t('reflections.viewTitle')}
         maxWidthClass="max-w-3xl"
         footer={
           editingId ? (
             <div className="flex gap-2">
               <button onClick={handleSaveReflection} className="btn-primary flex-1">
-                Save
+                {t('common.save')}
               </button>
               <button
                 onClick={() => {
@@ -394,7 +396,7 @@ export const ReflectionsPage: React.FC = () => {
                 }}
                 className="btn-secondary flex-1"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           ) : (
@@ -403,10 +405,10 @@ export const ReflectionsPage: React.FC = () => {
                 onClick={() => selectedGroup && openEdit(selectedGroup.shifts[0])}
                 className="btn-primary flex-1"
               >
-                Add/Edit Reflection
+                {t('common.edit')}
               </button>
               <button onClick={() => setSelectedDate(null)} className="btn-secondary flex-1">
-                Close
+                {t('common.close')}
               </button>
             </div>
           )

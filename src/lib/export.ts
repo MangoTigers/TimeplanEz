@@ -1,17 +1,36 @@
 import { Shift } from './calculations'
+import { translate } from './i18n'
+import { useSettingsStore } from '@/store'
+
+const getLanguage = () => useSettingsStore.getState().settings?.language || 'no'
+
+const getLocale = (language: string) => {
+  if (language === 'sv') return 'sv-SE'
+  if (language === 'en') return 'en-US'
+  return 'nb-NO'
+}
 
 /**
  * Export shifts to CSV format
  */
 export function shiftsToCSV(shifts: Shift[], hourlyRate: number, currency: string): string {
-  const headers = ['Date', 'Hours', 'Status', 'Category', 'Notes', 'Earnings']
+  const language = getLanguage()
+  const locale = getLocale(language)
+  const headers = [
+    translate(language, 'analytics.headersDate'),
+    translate(language, 'analytics.headersTotalHours'),
+    translate(language, 'analytics.headersStatus'),
+    translate(language, 'analytics.headersCategories'),
+    translate(language, 'analytics.headersNotes'),
+    translate(language, 'export.totalEarnings'),
+  ]
   const rows = shifts.map((shift) => {
     const earnings = shift.paid ? shift.hours_worked * hourlyRate : 0
     return [
-      new Date(shift.date).toLocaleDateString('nb-NO'),
+      new Date(shift.date).toLocaleDateString(locale),
       shift.hours_worked,
-      shift.paid ? 'Paid' : 'Unpaid',
-      shift.category || '-',
+      shift.paid ? translate(language, 'common.paid') : translate(language, 'common.unpaid'),
+      shift.category || translate(language, 'common.general'),
       shift.notes || '',
       `${currency} ${earnings.toFixed(2)}`,
     ]
@@ -39,33 +58,35 @@ export async function generatePDFReport(
   userName: string
 ) {
   const { jsPDF } = await import('jspdf')
+  const language = getLanguage()
+  const locale = getLocale(language)
 
   const doc = new jsPDF()
   doc.setFontSize(24)
-  doc.text('EzTimeplan - Earnings Report', 20, 20)
+  doc.text(translate(language, 'export.reportTitle'), 20, 20)
   doc.setFontSize(10)
-  doc.text(`Generated: ${new Date().toLocaleDateString('nb-NO')}`, 20, 30)
-  doc.text(`User: ${userName}`, 20, 40)
+  doc.text(`${translate(language, 'export.generated')}: ${new Date().toLocaleDateString(locale)}`, 20, 30)
+  doc.text(`${translate(language, 'export.user')}: ${userName}`, 20, 40)
 
   // Add summary
   doc.setFontSize(14)
-  doc.text('Summary', 20, 55)
+  doc.text(translate(language, 'export.summary'), 20, 55)
   doc.setFontSize(10)
   const totalHours = shifts.reduce((sum, s) => sum + s.hours_worked, 0)
   const paidHours = shifts.filter((s) => s.paid).reduce((sum, s) => sum + s.hours_worked, 0)
 
-  doc.text(`Total Hours: ${totalHours}`, 20, 65)
-  doc.text(`Paid Hours: ${paidHours}`, 20, 75)
-  doc.text(`Total Earnings: ${currency} ${totalEarnings.toFixed(2)}`, 20, 85)
+  doc.text(`${translate(language, 'export.totalHours')}: ${totalHours}`, 20, 65)
+  doc.text(`${translate(language, 'export.paidHours')}: ${paidHours}`, 20, 75)
+  doc.text(`${translate(language, 'export.totalEarnings')}: ${currency} ${totalEarnings.toFixed(2)}`, 20, 85)
 
   // Add table of shifts
   doc.setFontSize(12)
-  doc.text('Shifts', 20, 100)
+  doc.text(translate(language, 'export.shifts'), 20, 100)
 
   let yPosition = 110
   shifts.slice(0, 20).forEach((shift) => {
     const earnings = shift.paid ? shift.hours_worked * (totalEarnings / paidHours || 0) : 0
-    const line = `${new Date(shift.date).toLocaleDateString('nb-NO')} - ${shift.hours_worked}h (${shift.paid ? 'Paid' : 'Unpaid'}) - ${currency} ${earnings.toFixed(2)}`
+    const line = `${new Date(shift.date).toLocaleDateString(locale)} - ${shift.hours_worked}h (${shift.paid ? translate(language, 'common.paid') : translate(language, 'common.unpaid')}) - ${currency} ${earnings.toFixed(2)}`
     doc.setFontSize(9)
     doc.text(line, 20, yPosition)
     yPosition += 8
@@ -107,7 +128,7 @@ export async function sendEmailNotification(
     )
 
     if (!response.ok) {
-      throw new Error('Failed to send email')
+      throw new Error(translate(getLanguage(), 'export.failedToSendEmail'))
     }
 
     return await response.json()

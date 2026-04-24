@@ -3,10 +3,12 @@ import { supabase, ensureUserProfile } from '@/lib/supabase'
 import { useAuthStore } from '@/store'
 import { useToast } from '@/components/common/UI'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from '@/lib/i18n'
 
 export const LoginPage: React.FC = () => {
   const toast = useToast()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [loading, setLoading] = React.useState(false)
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
@@ -51,13 +53,13 @@ export const LoginPage: React.FC = () => {
           await ensureUserProfile(data.user)
           setUser(data.user)
           setSession(data.session)
-          toast.showToast({ type: 'success', message: 'Account created and logged in!' })
+          toast.showToast({ type: 'success', message: t('login.createdAndLoggedIn') })
           navigate('/dashboard')
         } else {
           // With email confirmation enabled, the profile row is created by DB trigger after auth user creation.
           toast.showToast({
             type: 'success',
-            message: 'Account created! Please check your email to confirm.',
+            message: t('login.createdConfirmEmail'),
           })
         }
       } else {
@@ -72,7 +74,7 @@ export const LoginPage: React.FC = () => {
           await ensureUserProfile(data.user)
           setUser(data.user)
           setSession(data.session)
-          toast.showToast({ type: 'success', message: 'Logged in successfully!' })
+          toast.showToast({ type: 'success', message: t('login.loggedIn') })
           navigate('/dashboard')
         }
       }
@@ -91,14 +93,14 @@ export const LoginPage: React.FC = () => {
             EzTimeplan
           </h1>
           <p className="text-gray-600 dark:text-gray-400">
-            Track your hours with ease
+            {t('login.tagline')}
           </p>
         </div>
 
         <form onSubmit={handleAuth} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Email
+              {t('login.email')}
             </label>
             <input
               type="email"
@@ -112,7 +114,7 @@ export const LoginPage: React.FC = () => {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Password
+              {t('login.password')}
             </label>
             <input
               type="password"
@@ -129,7 +131,7 @@ export const LoginPage: React.FC = () => {
             disabled={loading}
             className="btn-primary w-full"
           >
-            {loading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Log In'}
+            {loading ? t('common.loading') : isSignUp ? t('login.signUp') : t('login.logIn')}
           </button>
         </form>
 
@@ -139,12 +141,12 @@ export const LoginPage: React.FC = () => {
             onClick={() => setIsSignUp(!isSignUp)}
             className="text-primary-600 dark:text-primary-400 hover:underline text-sm"
           >
-            {isSignUp ? 'Already have an account? Log in' : "Don't have an account? Sign up"}
+            {isSignUp ? t('login.haveAccount') : t('login.noAccount')}
           </button>
         </div>
 
         <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400">
-          <p className="text-center">Demo credentials (for testing):</p>
+          <p className="text-center">{t('login.demoTitle')}</p>
           <p className="text-center mt-1">Email: demo@example.com</p>
           <p className="text-center">Password: demo123456</p>
         </div>

@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { format, startOfWeek, parseISO } from 'date-fns'
 import { partsToHours, hoursToParts, formatHoursMinutes } from '@/lib/calculations'
 import { DurationInput } from './DurationInput'
+import { useTranslation } from '@/lib/i18n'
 import {
   createDefaultReflectionValues,
   defaultCategories,
@@ -23,11 +24,12 @@ interface LogHoursFormProps {
 
 export const LogHoursForm: React.FC<LogHoursFormProps> = ({
   onSaved,
-  submitLabel = '✓ Log Hours',
+  submitLabel,
 }) => {
   const { user } = useAuthStore()
   const { addShift, shifts, setShifts } = useShiftStore()
   const { settings } = useSettingsStore()
+  const { t } = useTranslation()
   const toast = useToast()
   const useSchoolHoursMode = settings?.use_school_hours_mode ?? true
   const categories = settings?.custom_categories?.length ? settings.custom_categories : defaultCategories
@@ -111,7 +113,7 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
 
     const workedHours = partsToHours(formData.hours, formData.minutes)
     if (workedHours <= 0) {
-      toast.showToast({ type: 'warning', message: 'Please enter a duration greater than 0 minutes.' })
+      toast.showToast({ type: 'warning', message: t('logHours.durationTooShort') })
       return
     }
 
@@ -238,10 +240,13 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
       if (formData.paidStatus === 'auto' && shiftsToInsert.length === 2) {
         toast.showToast({
           type: 'success',
-          message: `Shift logged and split: ${formatHoursMinutes(shiftsToInsert[0].hours_worked)} unpaid, ${formatHoursMinutes(shiftsToInsert[1].hours_worked)} paid.`,
+          message: t('logHours.shiftLoggedSplit', {
+            unpaid: formatHoursMinutes(shiftsToInsert[0].hours_worked),
+            paid: formatHoursMinutes(shiftsToInsert[1].hours_worked),
+          }),
         })
       } else {
-        toast.showToast({ type: 'success', message: 'Shift logged successfully!' })
+        toast.showToast({ type: 'success', message: t('logHours.shiftLogged') })
       }
 
       setFormData({
@@ -268,7 +273,7 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Date</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">{t('logHours.date')}</label>
           <input
             type="date"
             value={formData.date}
@@ -279,7 +284,7 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Duration</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">{t('logHours.duration')}</label>
           <DurationInput
             hours={formData.hours}
             minutes={formData.minutes}
@@ -287,14 +292,14 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
             onMinutesChange={(minutes) => setFormData({ ...formData, minutes })}
           />
           <p className="text-xs text-gray-500 dark:text-gray-300 mt-2">
-            You can type duration manually, or use From/To below for auto-calculation.
+            {t('logHours.typeDurationHint')}
           </p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">From Time</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">{t('logHours.fromTime')}</label>
           <input
             type="time"
             value={formData.fromTime}
@@ -304,7 +309,7 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">To Time</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">{t('logHours.toTime')}</label>
           <input
             type="time"
             value={formData.toTime}
@@ -317,13 +322,13 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
       {formData.fromTime && formData.toTime && (
         <div className="p-3 bg-primary-50 dark:bg-primary-900/30 rounded-lg border border-primary-200 dark:border-primary-700">
           <p className="text-sm text-primary-900 dark:text-primary-200">
-            Auto-calculated duration: <strong>{formatHoursMinutes(partsToHours(formData.hours, formData.minutes))}</strong>
+            {t('logHours.autoDuration')}: <strong>{formatHoursMinutes(partsToHours(formData.hours, formData.minutes))}</strong>
           </p>
         </div>
       )}
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Category</label>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">{t('logHours.category')}</label>
         <select
           value={formData.category}
           onChange={(e) => setFormData({ ...formData, category: e.target.value })}
@@ -336,16 +341,17 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Paid Status</label>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">{t('logHours.paidStatus')}</label>
         <div className="space-y-3">
           {((useSchoolHoursMode ? ['auto', 'paid', 'unpaid'] : ['paid', 'unpaid']) as PaidStatus[]).map((status) => {
-            const label = status === 'auto' ? 'Auto-Calculate' : status === 'paid' ? 'Mark as Paid' : 'Mark as Unpaid'
+            const label =
+              status === 'auto' ? t('logHours.autoCalculate') : status === 'paid' ? t('logHours.markPaid') : t('logHours.markUnpaid')
             const description =
               status === 'auto'
-                ? `Based on school hours per week (${formatHoursMinutes(settings?.school_hours_per_week || 20)})`
+                ? t('logHours.basedOnSchoolHours', { hours: formatHoursMinutes(settings?.school_hours_per_week || 20) })
                 : status === 'paid'
-                  ? 'Count towards earnings'
-                  : 'Does not count towards earnings'
+                  ? t('logHours.countTowardsEarnings')
+                  : t('logHours.notCountTowardsEarnings')
             const borderColor =
               formData.paidStatus === status
                 ? status === 'auto'
@@ -379,17 +385,17 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Notes (Optional)</label>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">{t('logHours.notesOptional')}</label>
         <textarea
           value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
           className="input-base w-full h-24 resize-none"
-          placeholder="Add any notes about this shift..."
+          placeholder={t('logHours.notesPlaceholder')}
         ></textarea>
       </div>
 
       <div className="card">
-        <h2 className="text-sm font-semibold mb-3 text-gray-900 dark:text-gray-100">Reflection (Optional)</h2>
+        <h2 className="text-sm font-semibold mb-3 text-gray-900 dark:text-gray-100">{t('logHours.reflectionOptional')}</h2>
         <div className="space-y-4">
           {reflectionFields.map((field) => {
             const value = formData.reflectionValues[field.id]
@@ -472,7 +478,7 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
                     }
                     className="input-base w-full"
                   >
-                    <option value="">Select an option</option>
+                    <option value="">{t('logHours.selectOption')}</option>
                     {(field.options || []).map((option) => (
                       <option key={option} value={option}>
                         {option}
@@ -491,11 +497,11 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
       </div>
 
       <button type="submit" disabled={loading} className="btn-primary w-full">
-        {loading ? 'Saving...' : submitLabel}
+        {loading ? t('logHours.saving') : submitLabel || t('logHours.submit')}
       </button>
 
       <div className="card p-4">
-        <h2 className="text-sm font-semibold mb-3 text-gray-900 dark:text-gray-100">Quick Templates</h2>
+        <h2 className="text-sm font-semibold mb-3 text-gray-900 dark:text-gray-100">{t('logHours.quickTemplates')}</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {(settings?.quick_templates || []).map((template) => (
             <button
@@ -519,7 +525,7 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
         </div>
         {!settings?.quick_templates?.length && (
           <p className="text-sm text-gray-600 dark:text-gray-300 mt-3">
-            No templates configured yet. Add templates in Settings.
+            {t('logHours.noTemplates')}
           </p>
         )}
       </div>
