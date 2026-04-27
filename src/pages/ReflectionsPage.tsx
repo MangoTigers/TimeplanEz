@@ -4,7 +4,7 @@ import { Layout } from '@/components/Layout'
 import { useAuthStore, useSettingsStore, useShiftStore } from '@/store'
 import { supabase } from '@/lib/supabase'
 import { useToast, Modal } from '@/components/common/UI'
-import { formatHoursMinutes } from '@/lib/calculations'
+import { formatHoursMinutes, formatWeekLabel } from '@/lib/calculations'
 import { ShiftStatusBadge } from '@/components/shifts/ShiftStatusBadge'
 import {
   createDefaultReflectionValues,
@@ -17,6 +17,7 @@ import {
   type ReflectionData,
 } from '@/lib/reflections'
 import { useTranslation } from '@/lib/i18n'
+import { classifyEdgeFunctionError, getEdgeFunctionTroubleshootingHint } from '@/lib/edgeFunctions'
 
 interface ShiftWithReflection {
   id: string
@@ -38,6 +39,16 @@ interface DayReflectionGroup {
   reflection: ReflectionData
   enhancedReflection: string | null
   hasReflection: boolean
+}
+
+interface ImportedEntryDraft {
+  clientId: string
+  date: string
+  hours_worked: number
+  paid: boolean | null
+  category: string
+  notes: string
+  reflection: string
 }
 
 const emptyReflectionData: ReflectionData = {
@@ -64,6 +75,11 @@ export const ReflectionsPage: React.FC = () => {
   const [enhancedText, setEnhancedText] = React.useState('')
   const [loadingEnhance, setLoadingEnhance] = React.useState(false)
   const [searchTerm, setSearchTerm] = React.useState('')
+  const [importAiFile, setImportAiFile] = React.useState<File | null>(null)
+  const [isImportingAi, setIsImportingAi] = React.useState(false)
+  const [reviewEntries, setReviewEntries] = React.useState<ImportedEntryDraft[]>([])
+  const [isReviewModalOpen, setIsReviewModalOpen] = React.useState(false)
+  const [isApplyingImport, setIsApplyingImport] = React.useState(false)
 
   React.useEffect(() => {
     if (user) {
@@ -244,8 +260,15 @@ export const ReflectionsPage: React.FC = () => {
 
       setEnhancedText(data.enhanced_text)
       toast.showToast({ type: 'success', message: 'Reflection enhanced!' })
-    } catch {
-      toast.showToast({ type: 'error', message: 'Failed to enhance reflection' })
+    } catch (error: any) {
+      const code = classifyEdgeFunctionError(error)
+      const message =
+        code === 'not_deployed'
+          ? t('errors.edgeFunctionNotDeployed', { name: 'enhance-reflection' })
+          : code === 'network'
+            ? `${t('errors.edgeFunctionNetwork')} ${getEdgeFunctionTroubleshootingHint()}`
+            : error?.message || t('errors.edgeFunctionUnknown')
+      toast.showToast({ type: 'error', message })
     } finally {
       setLoadingEnhance(false)
     }
@@ -291,17 +314,277 @@ export const ReflectionsPage: React.FC = () => {
     toast.showToast({ type: 'success', message: t('reflections.exportSuccess') })
   }
 
+  const fileToBase64 = async (file: File): Promise<string> => {
+    const arrayBuffer = await file.arrayBuffer()
+    let binary = ''
+    const bytes = new Uint8Array(arrayBuffer)
+    const chunkSize = 0x8000
+
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize)
+      binary += String.fromCharCode(...chunk)
+    }
+
+    return btoa(binary)
+  }
+
+  const handleImportAi = async () => {
+    if (!user || !importAiFile) {
+      toast.showToast({ type: 'warning', message: t('analytics.importPickPdfFirst') })
+      return
+    }
+
+    if (!hasOpenAiKey) {
+      toast.showToast({ type: 'warning', message: t('analytics.importRequiresAiKey') })
+      return
+    }
+
+    const allowedTypes = ['application/pdf', 'text/plain', 'text/csv']
+    if (importAiFile.type && !allowedTypes.includes(importAiFile.type)) {
+      toast.showToast({ type: 'warning', message: t('analytics.importOnlyPdf') })
+      return
+    }
+
+    const maxBytes = 8 * 1024 * 1024
+    if (importAiFile.size > maxBytes) {
+      toast.showToast({ type: 'warning', message: t('analytics.importPdfTooLarge') })
+      return
+    }
+
+    setIsImportingAi(true)
+
+    try {
+      const fileBase64 = await fileToBase64(importAiFile)
+
+      const { data, error } = await supabase.functions.invoke('import-pdf-history', {
+        body: {
+          mode: 'preview',
+          fileName: importAiFile.name,
+          fileBase64,
+          fileType: importAiFile.type || null,
+          reflectionFields,
+          openaiApiKey: settings?.openai_api_key || null,
+        },
+      })
+
+      if (error) throw error
+
+      const previewRows = Array.isArray(data?.entries) ? data.entries : []
+      if (!previewRows.length) {
+        toast.showToast({ type: 'warning', message: t('analytics.importNoRows') })
+      } else {
+        setReviewEntries(
+          previewRows.map((row: any, index: number) => ({
+            clientId: `draft-${Date.now()}-${index}`,
+            date: String(row.date || ''),
+            hours_worked: Number(row.hours_worked || 0),
+            paid: typeof row.paid === 'boolean' ? row.paid : null,
+            category: String(row.category || 'General'),
+            notes: String(row.notes || ''),
+            reflection: String(row.reflection || ''),
+          }))
+        )
+        setIsReviewModalOpen(true)
+      }
+      setImportAiFile(null)
+    } catch (error: any) {
+      const code = classifyEdgeFunctionError(error)
+      const message =
+        code === 'not_deployed'
+          ? t('errors.edgeFunctionNotDeployed', { name: 'import-pdf-history' })
+          : code === 'network'
+            ? `${t('errors.edgeFunctionNetwork')} ${getEdgeFunctionTroubleshootingHint()}`
+            : error?.message || t('errors.edgeFunctionUnknown')
+      toast.showToast({
+        type: 'error',
+        message,
+      })
+    } finally {
+      setIsImportingAi(false)
+    }
+  }
+
+  const addReviewRow = () => {
+    setReviewEntries((prev) => [
+      ...prev,
+      {
+        clientId: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        date: format(new Date(), 'yyyy-MM-dd'),
+        hours_worked: 1,
+        paid: null,
+        category: 'General',
+        notes: '',
+        reflection: '',
+      },
+    ])
+  }
+
+  const removeReviewRow = (clientId: string) => {
+    setReviewEntries((prev) => prev.filter((entry) => entry.clientId !== clientId))
+  }
+
+  const updateReviewRow = (clientId: string, updates: Partial<ImportedEntryDraft>) => {
+    setReviewEntries((prev) =>
+      prev.map((entry) => (entry.clientId === clientId ? { ...entry, ...updates } : entry))
+    )
+  }
+
+  const serializeRowKey = (row: {
+    date: string
+    hours_worked: number
+    paid: boolean | null
+    category: string
+    notes: string
+  }) => {
+    return [
+      row.date,
+      Number(row.hours_worked).toFixed(2),
+      row.paid === null ? 'null' : String(row.paid),
+      row.category.trim().toLowerCase(),
+      row.notes.trim().toLowerCase(),
+    ].join('|')
+  }
+
+  const buildReflectionPayloadFromText = (text: string): string | null => {
+    const trimmed = text.trim()
+    if (!trimmed) {
+      return null
+    }
+
+    const firstTextField = reflectionFields.find(
+      (field) => field.type === 'text' || field.type === 'textarea'
+    )
+    if (!firstTextField) {
+      return null
+    }
+
+    const values = createDefaultReflectionValues(reflectionFields)
+    values[firstTextField.id] = trimmed
+    return serializeReflection({ values })
+  }
+
+  const handleApplyReviewedImport = async () => {
+    if (!user) {
+      return
+    }
+
+    const validRows = reviewEntries.filter((entry) => {
+      return /^\d{4}-\d{2}-\d{2}$/.test(entry.date) && Number(entry.hours_worked) > 0
+    })
+
+    if (!validRows.length) {
+      toast.showToast({ type: 'warning', message: t('analytics.importNoRows') })
+      return
+    }
+
+    setIsApplyingImport(true)
+    try {
+      const uniqueRowsMap = new Map<string, ImportedEntryDraft>()
+      validRows.forEach((row) => {
+        const key = serializeRowKey({
+          date: row.date,
+          hours_worked: row.hours_worked,
+          paid: row.paid,
+          category: row.category || 'General',
+          notes: row.notes || '',
+        })
+        if (!uniqueRowsMap.has(key)) {
+          uniqueRowsMap.set(key, row)
+        }
+      })
+
+      const dedupedRows = Array.from(uniqueRowsMap.values())
+      const importDates = Array.from(new Set(dedupedRows.map((row) => row.date)))
+
+      const { data: existingRows, error: existingError } = await supabase
+        .from('shifts')
+        .select('date,hours_worked,paid,category,notes')
+        .eq('user_id', user.id)
+        .in('date', importDates)
+
+      if (existingError) {
+        throw existingError
+      }
+
+      const existingKeys = new Set(
+        (existingRows || []).map((row) =>
+          serializeRowKey({
+            date: String(row.date),
+            hours_worked: Number(row.hours_worked),
+            paid: row.paid === null ? null : Boolean(row.paid),
+            category: String(row.category || 'General'),
+            notes: String(row.notes || ''),
+          })
+        )
+      )
+
+      const insertRows = dedupedRows
+        .filter((row) =>
+          !existingKeys.has(
+            serializeRowKey({
+              date: row.date,
+              hours_worked: row.hours_worked,
+              paid: row.paid,
+              category: row.category || 'General',
+              notes: row.notes || '',
+            })
+          )
+        )
+        .map((row) => ({
+          user_id: user.id,
+          date: row.date,
+          hours_worked: Number(row.hours_worked),
+          paid: row.paid,
+          category: row.category || 'General',
+          notes: row.notes.trim() || null,
+          reflection: buildReflectionPayloadFromText(row.reflection),
+          enhanced_reflection: null,
+        }))
+
+      if (insertRows.length > 0) {
+        const { error: insertError } = await supabase.from('shifts').insert(insertRows)
+        if (insertError) {
+          throw insertError
+        }
+      }
+
+      toast.showToast({
+        type: 'success',
+        message: t('analytics.importSuccess', {
+          count: insertRows.length,
+          skipped: dedupedRows.length - insertRows.length,
+        }),
+      })
+
+      setIsReviewModalOpen(false)
+      setReviewEntries([])
+      await loadEntries()
+    } catch (error: any) {
+      toast.showToast({
+        type: 'error',
+        message: error?.message || t('analytics.importFailed'),
+      })
+    } finally {
+      setIsApplyingImport(false)
+    }
+  }
+
   return (
     <Layout>
       <div className="space-y-8">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{t('layout.reflections')}</h1>
-          <button onClick={handleExportReflectionsCSV} className="btn-secondary">
-            {t('reflections.exportCsv')}
-          </button>
+          <div className="flex gap-2">
+            <button onClick={handleExportReflectionsCSV} className="btn-secondary">
+              {t('reflections.exportCsv')}
+            </button>
+            <button onClick={handleImportAi} disabled={isImportingAi || !importAiFile || !hasOpenAiKey} className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed">
+              {isImportingAi ? t('analytics.importingPdf') : t('analytics.importPdfAction')}
+            </button>
+          </div>
         </div>
 
-        <div className="card">
+        <div className="card space-y-3">
           <input
             type="text"
             placeholder={t('reflections.searchPlaceholder')}
@@ -309,6 +592,27 @@ export const ReflectionsPage: React.FC = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="input-base w-full"
           />
+
+          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-3 items-center">
+            <input
+              type="file"
+              accept="application/pdf,text/plain,text/csv,.pdf,.txt,.csv"
+              onChange={(e) => setImportAiFile(e.target.files?.[0] || null)}
+              className="input-base w-full"
+            />
+            <button
+              type="button"
+              onClick={handleImportAi}
+              disabled={isImportingAi || !importAiFile || !hasOpenAiKey}
+              className="btn-secondary w-full md:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isImportingAi ? t('analytics.importingPdf') : t('analytics.importPdfAction')}
+            </button>
+          </div>
+
+          {!hasOpenAiKey && (
+            <p className="text-xs text-warning-700 dark:text-warning-300">{t('analytics.importRequiresAiKey')}</p>
+          )}
         </div>
 
         {dayGroups.length > 0 ? (
@@ -337,7 +641,7 @@ export const ReflectionsPage: React.FC = () => {
                         {formatHoursMinutes(group.totalHours)} worked • {formatHoursMinutes(group.paidHours)} paid • {formatHoursMinutes(group.unpaidHours)} unpaid
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {group.shifts.length} log{group.shifts.length === 1 ? '' : 's'} • {categoryLabel || 'General'}{extraCategories}
+                        {group.shifts.length} log{group.shifts.length === 1 ? '' : 's'} • {formatWeekLabel(group.date)} • {categoryLabel || 'General'}{extraCategories}
                       </p>
                     </div>
                     <div className="text-right">
@@ -574,6 +878,124 @@ export const ReflectionsPage: React.FC = () => {
             )}
           </div>
         ) : null}
+      </Modal>
+
+      <Modal
+        isOpen={isReviewModalOpen}
+        onClose={() => setIsReviewModalOpen(false)}
+        title={t('import.reviewTitle')}
+        maxWidthClass="max-w-5xl"
+        footer={
+          <div className="flex gap-2">
+            <button
+              onClick={handleApplyReviewedImport}
+              className="btn-primary flex-1"
+              disabled={isApplyingImport}
+            >
+              {isApplyingImport ? t('common.saving') : t('import.confirmImport')}
+            </button>
+            <button onClick={() => setIsReviewModalOpen(false)} className="btn-secondary flex-1">
+              {t('common.cancel')}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">{t('import.reviewHelp')}</p>
+
+          <div className="flex justify-end">
+            <button type="button" className="btn-secondary" onClick={addReviewRow}>
+              + {t('import.addRow')}
+            </button>
+          </div>
+
+          <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+            {reviewEntries.map((entry) => (
+              <div key={entry.clientId} className="rounded-xl border border-gray-200 dark:border-slate-700 p-4 space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t('common.date')}</label>
+                    <input
+                      type="date"
+                      value={entry.date}
+                      onChange={(e) => updateReviewRow(entry.clientId, { date: e.target.value })}
+                      className="input-base w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t('common.duration')}</label>
+                    <input
+                      type="number"
+                      min="0.25"
+                      step="0.25"
+                      value={entry.hours_worked}
+                      onChange={(e) => updateReviewRow(entry.clientId, { hours_worked: Number(e.target.value) })}
+                      className="input-base w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t('common.paid')}</label>
+                    <select
+                      value={entry.paid === null ? 'auto' : entry.paid ? 'paid' : 'unpaid'}
+                      onChange={(e) =>
+                        updateReviewRow(entry.clientId, {
+                          paid: e.target.value === 'auto' ? null : e.target.value === 'paid',
+                        })
+                      }
+                      className="input-base w-full"
+                    >
+                      <option value="auto">{t('logHours.autoCalculate')}</option>
+                      <option value="paid">{t('common.paid')}</option>
+                      <option value="unpaid">{t('common.unpaid')}</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t('common.category')}</label>
+                    <input
+                      type="text"
+                      value={entry.category}
+                      onChange={(e) => updateReviewRow(entry.clientId, { category: e.target.value })}
+                      className="input-base w-full"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t('common.notes')}</label>
+                    <textarea
+                      value={entry.notes}
+                      onChange={(e) => updateReviewRow(entry.clientId, { notes: e.target.value })}
+                      className="input-base w-full h-20 resize-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium mb-1">{t('logHours.reflectionOptional')}</label>
+                    <textarea
+                      value={entry.reflection}
+                      onChange={(e) => updateReviewRow(entry.clientId, { reflection: e.target.value })}
+                      className="input-base w-full h-20 resize-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button type="button" className="btn-danger" onClick={() => removeReviewRow(entry.clientId)}>
+                    {t('common.delete')}
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {!reviewEntries.length && (
+              <p className="text-sm text-gray-600 dark:text-gray-400">{t('import.noRows')}</p>
+            )}
+          </div>
+        </div>
       </Modal>
     </Layout>
   )

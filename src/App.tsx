@@ -11,6 +11,7 @@ import { DashboardPage } from '@/pages/DashboardPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { AnalyticsPage } from '@/pages/AnalyticsPage'
 import { ReflectionsPage } from '@/pages/ReflectionsPage'
+import { EntriesPage } from '@/pages/EntriesPage'
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, setUser, setSession } = useAuthStore()
@@ -144,6 +145,14 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
             element={
               <ProtectedRoute>
                 <AnalyticsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/entries"
+            element={
+              <ProtectedRoute>
+                <EntriesPage />
               </ProtectedRoute>
             }
           />

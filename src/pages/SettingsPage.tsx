@@ -1,7 +1,7 @@
 import React from 'react'
 import { Layout } from '@/components/Layout'
 import { useSettingsStore, useAuthStore, useShiftStore, QuickTemplate } from '@/store'
-import { supabase } from '@/lib/supabase'
+import { supabase, getUserProfile } from '@/lib/supabase'
 import { useToast } from '@/components/common/UI'
 import { partsToHours, hoursToParts, formatHoursMinutes } from '@/lib/calculations'
 import { DurationInput } from '@/components/shifts/DurationInput'
@@ -21,6 +21,7 @@ interface SettingsFormData {
   hourly_rate: number
   currency: string
   language: 'no' | 'en' | 'sv'
+  theme: 'light' | 'dark' | 'girlie-pop'
   openai_api_key: string
   notifications_enabled: boolean
   email_digest_enabled: boolean
@@ -49,6 +50,7 @@ export const SettingsPage: React.FC = () => {
     hourly_rate: settings?.hourly_rate || 120,
     currency: settings?.currency || 'NOK',
     language: settings?.language || 'no',
+    theme: settings?.theme || 'light',
     openai_api_key: settings?.openai_api_key || '',
     notifications_enabled: settings?.notifications_enabled || true,
     email_digest_enabled: settings?.email_digest_enabled || true,
@@ -69,6 +71,7 @@ export const SettingsPage: React.FC = () => {
       hourly_rate: settings.hourly_rate,
       currency: settings.currency,
       language: settings.language || 'no',
+      theme: settings.theme || 'light',
       openai_api_key: settings.openai_api_key ?? '',
       notifications_enabled: settings.notifications_enabled,
       email_digest_enabled: settings.email_digest_enabled,
@@ -85,6 +88,7 @@ export const SettingsPage: React.FC = () => {
 
   const settingsSections = [
     { id: 'language', label: t('settings.language') },
+    { id: 'appearance', label: t('settings.appearance') },
     { id: 'work-hours', label: t('settings.workHoursConfiguration') },
     { id: 'custom-categories', label: t('settings.customCategories') },
     { id: 'notifications', label: t('settings.notifications') },
@@ -208,6 +212,7 @@ export const SettingsPage: React.FC = () => {
         school_hours_per_week: formData.school_hours_per_week,
         hourly_rate: formData.hourly_rate,
         currency: formData.currency,
+        theme: formData.theme,
         notifications_enabled: formData.notifications_enabled,
         email_digest_enabled: formData.email_digest_enabled,
       }
@@ -219,27 +224,58 @@ export const SettingsPage: React.FC = () => {
 
       if (coreError) throw coreError
 
-      // Optional columns may not exist in older databases.
-      const optionalPayload = {
-        use_school_hours_mode: formData.use_school_hours_mode,
-        openai_api_key: formData.openai_api_key || null,
-        custom_categories: formData.custom_categories,
-        reflection_fields: reflectionFields,
+      // Optional columns may not exist in older databases; update each field separately
+      // so a missing column does not block unrelated settings (like the API key).
+      const optionalUpdates: Array<{ key: string; value: unknown }> = [
+        { key: 'use_school_hours_mode', value: formData.use_school_hours_mode },
+        { key: 'openai_api_key', value: formData.openai_api_key.trim() || null },
+        { key: 'custom_categories', value: formData.custom_categories },
+        { key: 'reflection_fields', value: reflectionFields },
+      ]
+
+      for (const update of optionalUpdates) {
+        const { error } = await supabase
+          .from('users')
+          .update({ [update.key]: update.value })
+          .eq('id', user.id)
+
+        if (error) {
+          const msg = error.message || ''
+          const missingColumn = /column\s+\"?.+\"?\s+does not exist/i.test(msg)
+          toast.showToast({
+            type: missingColumn ? 'warning' : 'error',
+            message: missingColumn ? t('settings.partialSaveWarning') : msg,
+          })
+        }
       }
 
-      const { error: optionalError } = await supabase
-        .from('users')
-        .update(optionalPayload)
-        .eq('id', user.id)
+      // Re-fetch the canonical profile from DB to reflect what actually persisted
+      try {
+        const fresh = await getUserProfile(user.id)
+        const dbHasKey = Boolean((fresh?.openai_api_key || '').trim())
+        const enteredKey = (formData.openai_api_key?.trim() || '')
 
-      if (optionalError) {
-        toast.showToast({
-          type: 'warning',
-          message: t('settings.openAiApiKeyHelp'),
+        // If DB lacks key but user entered one, keep it client-side so features still work
+        const effectiveKey = dbHasKey ? fresh.openai_api_key : enteredKey
+
+        updateSettings({
+          ...fresh,
+          theme: fresh?.theme || formData.theme,
+          openai_api_key: effectiveKey,
+          reflection_fields: normalizeReflectionFields(fresh?.reflection_fields || reflectionFields),
         })
+
+        if (enteredKey && !dbHasKey) {
+          toast.showToast({
+            type: 'warning',
+            message: t('settings.openAiKeyStoredLocallyWarning'),
+          })
+        }
+      } catch {
+        // If fetch fails, still reflect local state so UI remains usable
+        updateSettings({ ...formData, reflection_fields: reflectionFields })
       }
 
-      updateSettings({ ...formData, reflection_fields: reflectionFields })
       toast.showToast({ type: 'success', message: t('settings.saveAll') })
     } catch (error: any) {
       toast.showToast({ type: 'error', message: error.message })
@@ -250,6 +286,17 @@ export const SettingsPage: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (formData.school_hours_per_week < 0 || !Number.isFinite(formData.school_hours_per_week)) {
+      toast.showToast({ type: 'warning', message: t('settings.invalidSchoolHours') })
+      return
+    }
+
+    if (formData.hourly_rate < 0 || !Number.isFinite(formData.hourly_rate)) {
+      toast.showToast({ type: 'warning', message: t('settings.invalidHourlyRate') })
+      return
+    }
+
     await persistSettings()
   }
 
@@ -430,6 +477,26 @@ export const SettingsPage: React.FC = () => {
                     ))}
                   </select>
                   <p className="text-xs text-gray-600 dark:text-gray-400">{t('settings.languageHelp')}</p>
+                </div>
+              </div>
+
+              {/* Appearance */}
+              <div id="appearance" className="card scroll-mt-24">
+                <h2 className="text-xl font-bold mb-6">{t('settings.appearance')}</h2>
+                <div className="space-y-3 max-w-xl">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {t('settings.theme')}
+                  </label>
+                  <select
+                    value={formData.theme}
+                    onChange={(e) => setFormData({ ...formData, theme: e.target.value as 'light' | 'dark' | 'girlie-pop' })}
+                    className="input-base w-full max-w-xs"
+                  >
+                    <option value="light">{t('theme.light')}</option>
+                    <option value="dark">{t('theme.dark')}</option>
+                    <option value="girlie-pop">{t('theme.girliePop')}</option>
+                  </select>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">{t('settings.themeHelp')}</p>
                 </div>
               </div>
 
@@ -619,7 +686,7 @@ export const SettingsPage: React.FC = () => {
                     <input
                       type="password"
                       value={formData.openai_api_key}
-                      onChange={(e) => setFormData({ ...formData, openai_api_key: e.target.value.trim() })}
+                      onChange={(e) => setFormData({ ...formData, openai_api_key: e.target.value })}
                       className="input-base w-full"
                       placeholder="sk-..."
                       autoComplete="off"

@@ -1,7 +1,8 @@
 import React from 'react'
 import { format, parseISO } from 'date-fns'
-import { formatHoursMinutes } from '@/lib/calculations'
+import { formatHoursMinutes, formatWeekLabel } from '@/lib/calculations'
 import { ShiftStatusBadge } from './ShiftStatusBadge'
+import { useTranslation } from '@/lib/i18n'
 
 interface ShiftRecord {
   id: string
@@ -26,23 +27,27 @@ export const ShiftTable: React.FC<ShiftTableProps> = ({
   maxRows = 20,
   onDeleteShift,
 }) => {
+  const { t } = useTranslation()
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="border-b border-gray-200 dark:border-gray-700">
           <tr>
-            <th className="text-left px-4 py-3 font-medium">Date</th>
-            <th className="text-left px-4 py-3 font-medium">Hours</th>
-            <th className="text-left px-4 py-3 font-medium">Status</th>
-            <th className="text-left px-4 py-3 font-medium">Category</th>
-            <th className="text-right px-4 py-3 font-medium">Earnings</th>
-            {onDeleteShift && <th className="text-right px-4 py-3 font-medium">Actions</th>}
+            <th className="text-left px-4 py-3 font-medium">{t('common.date')}</th>
+            <th className="text-left px-4 py-3 font-medium">{t('common.week')}</th>
+            <th className="text-left px-4 py-3 font-medium">{t('common.duration')}</th>
+            <th className="text-left px-4 py-3 font-medium">{t('analytics.headersStatus')}</th>
+            <th className="text-left px-4 py-3 font-medium">{t('common.category')}</th>
+            <th className="text-right px-4 py-3 font-medium">{t('dashboard.earnings')}</th>
+            {onDeleteShift && <th className="text-right px-4 py-3 font-medium">{t('common.actions')}</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
           {shifts.slice(0, maxRows).map((shift) => (
             <tr key={shift.id}>
               <td className="px-4 py-3">{format(parseISO(shift.date), 'MMM dd')}</td>
+              <td className="px-4 py-3">{formatWeekLabel(shift.date)}</td>
               <td className="px-4 py-3">{formatHoursMinutes(shift.hours_worked)}</td>
               <td className="px-4 py-3">
                 <ShiftStatusBadge paid={shift.paid} />
@@ -54,7 +59,7 @@ export const ShiftTable: React.FC<ShiftTableProps> = ({
               {onDeleteShift && (
                 <td className="px-4 py-3 text-right">
                   <button onClick={() => onDeleteShift(shift.id)} className="btn-danger px-3 py-1 text-xs">
-                    Delete
+                    {t('common.delete')}
                   </button>
                 </td>
               )}

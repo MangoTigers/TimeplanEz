@@ -97,7 +97,7 @@ interface UserSettingsStore {
     currency: string
     language: AppLanguage
     openai_api_key: string
-    theme: 'light' | 'dark'
+    theme: 'light' | 'dark' | 'girlie-pop'
     notifications_enabled: boolean
     email_digest_enabled: boolean
     custom_categories: string[]

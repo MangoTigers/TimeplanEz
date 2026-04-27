@@ -12,6 +12,16 @@
   body {
     @apply bg-white text-gray-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200;
   }
+
+  html[data-theme='girlie-pop'] body {
+    background: radial-gradient(circle at 10% 10%, #ffe4f1 0%, #ffd6eb 35%, #ffeef8 100%);
+    color: #4a1f3d;
+  }
+
+  html[data-theme='girlie-pop'] .dark body {
+    background: radial-gradient(circle at 10% 10%, #ffe4f1 0%, #ffd6eb 35%, #ffeef8 100%);
+    color: #4a1f3d;
+  }
 }
 
 @layer components {
@@ -35,8 +45,33 @@
     @apply bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 p-6 transition-all;
   }
 
+  html[data-theme='girlie-pop'] .card {
+    background: rgba(255, 255, 255, 0.8);
+    border-color: #f7a8ce;
+    box-shadow: 0 10px 24px rgba(180, 66, 128, 0.12);
+  }
+
   .input-base {
     @apply px-4 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all;
+  }
+
+  html[data-theme='girlie-pop'] .input-base {
+    border-color: #f29bc6;
+    background: #fff6fb;
+    color: #4a1f3d;
+  }
+
+  html[data-theme='girlie-pop'] .btn-primary {
+    background: linear-gradient(90deg, #ff5ba6 0%, #ff7dbb 100%);
+  }
+
+  html[data-theme='girlie-pop'] .btn-secondary {
+    background: #ffd7ea;
+    color: #5b1f47;
+  }
+
+  html[data-theme='girlie-pop'] .btn-danger {
+    background: #ff5f7f;
   }
 
   .input-error {

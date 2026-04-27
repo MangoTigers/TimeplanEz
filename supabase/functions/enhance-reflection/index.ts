@@ -5,6 +5,22 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+    },
+  })
+}
+
 interface RequestBody {
   reflection: string
   openaiApiKey?: string | null
@@ -13,13 +29,7 @@ interface RequestBody {
 serve(async (req: Request) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
-    return new Response('ok', {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-      },
-    })
+    return new Response('ok', { headers: corsHeaders })
   }
 
   try {
@@ -27,25 +37,11 @@ serve(async (req: Request) => {
     const effectiveApiKey = openaiApiKey?.trim() || OPENAI_API_KEY
 
     if (!reflection || typeof reflection !== 'string') {
-      return new Response(
-        JSON.stringify({ error: 'Invalid reflection text' }),
-        {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        }
-      )
+      return jsonResponse({ error: 'Invalid reflection text' }, 400)
     }
 
     if (!effectiveApiKey) {
-      return new Response(
-        JSON.stringify({
-          error: 'OpenAI API key not configured',
-        }),
-        {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        }
-      )
+      return jsonResponse({ error: 'OpenAI API key not configured' }, 400)
     }
 
     // Call OpenAI API
@@ -79,21 +75,12 @@ serve(async (req: Request) => {
     const data = await response.json()
     const enhanced_text = data.choices[0]?.message?.content || reflection
 
-    return new Response(JSON.stringify({ enhanced_text }), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
-    })
+    return jsonResponse({ enhanced_text }, 200)
   } catch (error) {
     console.error('Error:', error)
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
-      {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      }
+    return jsonResponse(
+      { error: error instanceof Error ? error.message : 'Unknown error' },
+      500
     )
   }
 })

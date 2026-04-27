@@ -1,4 +1,4 @@
-import { startOfWeek, endOfWeek, format, parseISO } from 'date-fns'
+import { startOfWeek, endOfWeek, format, parseISO, getISOWeek } from 'date-fns'
 
 export interface Shift {
   id: string
@@ -22,7 +22,7 @@ export interface UserSettings {
   currency: string
   openai_api_key?: string | null
   custom_categories?: string[]
-  theme: 'light' | 'dark'
+  theme: 'light' | 'dark' | 'girlie-pop'
   notifications_enabled: boolean
   email_digest_enabled: boolean
   created_at: string
@@ -181,4 +181,18 @@ export function formatHoursMinutes(hours: number): string {
     return `${parts.hours}h`
   }
   return `${parts.hours}h ${parts.minutes}m`
+}
+
+/**
+ * Get ISO week number for a date string.
+ */
+export function getIsoWeekNumber(date: string): number {
+  return getISOWeek(parseISO(date))
+}
+
+/**
+ * Format a week label like W17.
+ */
+export function formatWeekLabel(date: string): string {
+  return `W${getIsoWeekNumber(date)}`
 }

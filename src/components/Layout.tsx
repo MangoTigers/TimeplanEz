@@ -17,7 +17,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = React.useState(false)
-  const [theme, setTheme] = React.useState(settings?.theme || 'light')
+  const selectedTheme = settings?.theme || 'light'
   const isLogModalOpen = new URLSearchParams(location.search).get('log') === 'true'
   const { t } = useTranslation()
 
@@ -35,12 +35,11 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     navigate(`${location.pathname}${nextSearch ? `?${nextSearch}` : ''}`, { replace: true })
   }
 
-  const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light'
-    setTheme(newTheme)
-    updateSettings({ theme: newTheme })
-    document.documentElement.classList.toggle('dark')
-  }
+  React.useEffect(() => {
+    const isDark = selectedTheme === 'dark'
+    document.documentElement.classList.toggle('dark', isDark)
+    document.documentElement.setAttribute('data-theme', selectedTheme)
+  }, [selectedTheme])
 
   const handleLogout = async () => {
     try {
@@ -55,13 +54,14 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const menuItems = [
     { label: t('layout.dashboard'), href: '/dashboard', icon: '📊' },
+    { label: t('layout.entries'), href: '/entries', icon: '🗂️' },
     { label: t('layout.analytics'), href: '/analytics', icon: '📈' },
     { label: t('layout.reflections'), href: '/reflections', icon: '📝' },
     { label: t('layout.settings'), href: '/settings', icon: '⚙️' },
   ]
 
   return (
-    <div className={theme === 'dark' ? 'dark' : ''}>
+    <div className={selectedTheme === 'dark' ? 'dark' : ''}>
       <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
         {/* Header */}
         <header className="sticky top-0 z-30 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700">
@@ -77,13 +77,17 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
 
             <div className="flex items-center gap-4">
-              <button
-                onClick={toggleTheme}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              <label className="hidden md:block text-sm text-gray-600 dark:text-slate-300">{t('layout.theme')}</label>
+              <select
+                value={selectedTheme}
+                onChange={(e) => updateSettings({ theme: e.target.value })}
+                className="input-base py-1 px-2 text-sm"
                 title={t('layout.toggleTheme')}
               >
-                {theme === 'light' ? '🌙' : '☀️'}
-              </button>
+                <option value="light">{t('theme.light')}</option>
+                <option value="dark">{t('theme.dark')}</option>
+                <option value="girlie-pop">{t('theme.girliePop')}</option>
+              </select>
 
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600 dark:text-slate-300">{user?.email}</span>

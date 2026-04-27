@@ -67,9 +67,6 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
     if (!useSchoolHoursMode && formData.paidStatus === 'auto') {
       setFormData((prev) => ({ ...prev, paidStatus: 'paid' }))
     }
-    if (useSchoolHoursMode && formData.paidStatus !== 'auto') {
-      setFormData((prev) => ({ ...prev, paidStatus: 'auto' }))
-    }
   }, [formData.paidStatus, useSchoolHoursMode])
 
   const parseTimeToMinutes = (time: string): number | null => {
@@ -146,9 +143,11 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
 
       const existingDayReflection = existingDayRefRows?.[0]?.reflection ?? null
 
-      const reflectionValue = hasNewReflectionForDay
-        ? serializeReflection(reflectionPayload)
-        : existingDayReflection
+      const reflectionValue = existingDayReflection
+        ? existingDayReflection
+        : hasNewReflectionForDay
+          ? serializeReflection(reflectionPayload)
+          : null
 
       const shiftsToInsert: Array<{
         id: string
@@ -219,7 +218,7 @@ export const LogHoursForm: React.FC<LogHoursFormProps> = ({
       const { error } = await supabase.from('shifts').insert(shiftsToInsert)
       if (error) throw error
 
-      if (hasNewReflectionForDay && reflectionValue) {
+      if (hasNewReflectionForDay && reflectionValue && !existingDayReflection) {
         const { error: syncReflectionError } = await supabase
           .from('shifts')
           .update({ reflection: reflectionValue })

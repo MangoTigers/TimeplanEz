@@ -1,6 +1,6 @@
 import React from 'react'
 import { format, parseISO } from 'date-fns'
-import { formatHoursMinutes } from '@/lib/calculations'
+import { formatHoursMinutes, formatWeekLabel } from '@/lib/calculations'
 import { ShiftStatusBadge } from './ShiftStatusBadge'
 import { useTranslation } from '@/lib/i18n'
 
@@ -28,7 +28,7 @@ export const ShiftListItem: React.FC<ShiftListItemProps> = ({ shift, showDate = 
         </p>
         <p className="text-sm text-gray-600 dark:text-gray-400">
           {showDate
-            ? `${formatHoursMinutes(shift.hours_worked)} • ${shift.category || t('common.general')}`
+            ? `${formatHoursMinutes(shift.hours_worked)} • ${formatWeekLabel(shift.date)} • ${shift.category || t('common.general')}`
             : shift.category || t('common.general')}
         </p>
       </div>

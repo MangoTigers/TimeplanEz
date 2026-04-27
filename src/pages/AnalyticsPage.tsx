@@ -11,6 +11,7 @@ import {
   normalizeReflectionFields,
   parseReflection,
   type ReflectionData,
+  type ReflectionFieldConfig,
 } from '@/lib/reflections'
 import { StatCard } from '@/components/common/StatCard'
 import { ShiftTable } from '@/components/shifts/ShiftTable'
@@ -31,6 +32,8 @@ import {
 } from 'recharts'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, parseISO } from 'date-fns'
 import { useTranslation } from '@/lib/i18n'
+import { ExpandableCard } from '@/components/common/ExpandableCard'
+import { classifyEdgeFunctionError, getEdgeFunctionTroubleshootingHint } from '@/lib/edgeFunctions'
 
 interface DayExportRow {
   date: string
@@ -50,12 +53,15 @@ export const AnalyticsPage: React.FC = () => {
   const { settings } = useSettingsStore()
   const toast = useToast()
   const { t } = useTranslation()
-  const reflectionFields = React.useMemo(
+  const reflectionFields = React.useMemo<ReflectionFieldConfig[]>(
     () => normalizeReflectionFields(settings?.reflection_fields?.length ? settings.reflection_fields : defaultReflectionFields),
     [settings?.reflection_fields]
   )
   const [selectedMonth, setSelectedMonth] = React.useState(new Date())
   const [isExportModalOpen, setIsExportModalOpen] = React.useState(false)
+  const [importAiFile, setImportAiFile] = React.useState<File | null>(null)
+  const [isImportingAi, setIsImportingAi] = React.useState(false)
+  const hasOpenAiKey = Boolean(settings?.openai_api_key?.trim())
 
   React.useEffect(() => {
     if (user) {
@@ -217,7 +223,8 @@ export const AnalyticsPage: React.FC = () => {
       ...rows.map((row) => row.map((cell) => toCsvCell(cell)).join(',')),
     ].join('\n')
 
-    const blob = new Blob([csv], { type: 'text/csv' })
+    // Prepend UTF-8 BOM for better Excel compatibility (handles Norwegian letters correctly)
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -228,6 +235,95 @@ export const AnalyticsPage: React.FC = () => {
     URL.revokeObjectURL(url)
 
     toast.showToast({ type: 'success', message: t('analytics.exportSuccess') })
+  }
+
+  const fileToBase64 = async (file: File): Promise<string> => {
+    const arrayBuffer = await file.arrayBuffer()
+    let binary = ''
+    const bytes = new Uint8Array(arrayBuffer)
+    const chunkSize = 0x8000
+
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize)
+      binary += String.fromCharCode(...chunk)
+    }
+
+    return btoa(binary)
+  }
+
+  const handleImportAi = async () => {
+    if (!user || !importAiFile) {
+      toast.showToast({ type: 'warning', message: t('analytics.importPickPdfFirst') })
+      return
+    }
+
+    if (!hasOpenAiKey) {
+      toast.showToast({ type: 'warning', message: t('analytics.importRequiresAiKey') })
+      return
+    }
+
+    const allowedTypes = ['application/pdf', 'text/plain', 'text/csv']
+    if (importAiFile.type && !allowedTypes.includes(importAiFile.type)) {
+      toast.showToast({ type: 'warning', message: t('analytics.importOnlyPdf') })
+      // Reuse existing translation key; UI copy still says PDF, but parser supports CSV/TXT too.
+      return
+    }
+
+    const maxBytes = 8 * 1024 * 1024
+    if (importAiFile.size > maxBytes) {
+      toast.showToast({ type: 'warning', message: t('analytics.importPdfTooLarge') })
+      return
+    }
+
+    setIsImportingAi(true)
+
+    try {
+      const fileBase64 = await fileToBase64(importAiFile)
+
+      const { data, error } = await supabase.functions.invoke('import-pdf-history', {
+        body: {
+          fileName: importAiFile.name,
+          fileBase64,
+          fileType: importAiFile.type || null,
+          reflectionFields,
+          openaiApiKey: settings?.openai_api_key || null,
+        },
+      })
+
+      if (error) throw error
+
+      const importedCount = Number(data?.importedCount || 0)
+      const skippedCount = Number(data?.skippedDuplicates || 0)
+
+      if (importedCount <= 0) {
+        toast.showToast({ type: 'warning', message: t('analytics.importNoRows') })
+      } else {
+        toast.showToast({
+          type: 'success',
+          message: t('analytics.importSuccess', {
+            count: importedCount,
+            skipped: skippedCount,
+          }),
+        })
+      }
+
+      await loadShifts()
+      setImportAiFile(null)
+    } catch (error: any) {
+      const code = classifyEdgeFunctionError(error)
+      const message =
+        code === 'not_deployed'
+          ? t('errors.edgeFunctionNotDeployed', { name: 'import-pdf-history' })
+          : code === 'network'
+            ? `${t('errors.edgeFunctionNetwork')} ${getEdgeFunctionTroubleshootingHint()}`
+            : error?.message || t('errors.edgeFunctionUnknown')
+      toast.showToast({
+        type: 'error',
+        message,
+      })
+    } finally {
+      setIsImportingAi(false)
+    }
   }
 
   return (
@@ -269,8 +365,7 @@ export const AnalyticsPage: React.FC = () => {
 
         {/* Daily Hours Chart */}
         {dailyData.length > 0 && (
-          <div className="card">
-            <h2 className="text-lg font-bold mb-4">{t('analytics.dailyOverview')}</h2>
+          <ExpandableCard title={t('analytics.dailyOverview')} collapsedMaxHeight={360}>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={dailyData}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -282,13 +377,12 @@ export const AnalyticsPage: React.FC = () => {
                   <Bar dataKey="unpaid" fill="#eab308" name={t('analytics.unpaid')} />
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          </ExpandableCard>
         )}
 
         {/* Hourly Trend Chart */}
         {dailyData.length > 0 && (
-          <div className="card">
-            <h2 className="text-lg font-bold mb-4">{t('analytics.hoursTrend')}</h2>
+          <ExpandableCard title={t('analytics.hoursTrend')} collapsedMaxHeight={360}>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={dailyData}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -300,13 +394,12 @@ export const AnalyticsPage: React.FC = () => {
                 <Line type="monotone" dataKey="paid" stroke="#22c55e" name={t('analytics.paidHoursSeries')} />
               </LineChart>
             </ResponsiveContainer>
-          </div>
+          </ExpandableCard>
         )}
 
         {/* Category Breakdown */}
         {categoryData.length > 0 && (
-          <div className="card">
-            <h2 className="text-lg font-bold mb-4">{t('analytics.hoursByCategory')}</h2>
+          <ExpandableCard title={t('analytics.hoursByCategory')} collapsedMaxHeight={360}>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
@@ -326,20 +419,19 @@ export const AnalyticsPage: React.FC = () => {
                 <Tooltip />
               </PieChart>
             </ResponsiveContainer>
-          </div>
+          </ExpandableCard>
         )}
 
         {/* Weekly Summary Table */}
         {monthShifts.length > 0 && (
-          <div className="card">
-            <h2 className="text-lg font-bold mb-4">{t('analytics.shiftsThisMonth')}</h2>
+          <ExpandableCard title={t('analytics.shiftsThisMonth')} collapsedMaxHeight={420}>
             <ShiftTable
               shifts={monthShifts}
               currency={settings?.currency || 'NOK'}
               hourlyRate={settings?.hourly_rate || 120}
               onDeleteShift={handleDeleteShift}
             />
-          </div>
+          </ExpandableCard>
         )}
       </div>
 
@@ -363,6 +455,31 @@ export const AnalyticsPage: React.FC = () => {
           <p>{t('analytics.exportMonth', { month: format(selectedMonth, 'MMMM yyyy') })}</p>
           <div className="bg-primary-50 dark:bg-primary-900/20 p-3 rounded-lg text-sm text-primary-900 dark:text-primary-200">
             {t('analytics.exportDescription')}
+          </div>
+
+          <div className="border border-gray-200 dark:border-slate-700 rounded-xl p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('analytics.importPdfTitle')}</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">{t('analytics.importPdfHelp')}</p>
+
+            <input
+              type="file"
+              accept="application/pdf,text/plain,text/csv,.pdf,.txt,.csv"
+              onChange={(e) => setImportAiFile(e.target.files?.[0] || null)}
+              className="input-base w-full"
+            />
+
+            {!hasOpenAiKey && (
+              <p className="text-xs text-warning-700 dark:text-warning-300">{t('analytics.importRequiresAiKey')}</p>
+            )}
+
+            <button
+              type="button"
+              onClick={handleImportAi}
+              disabled={isImportingAi || !importAiFile || !hasOpenAiKey}
+              className="btn-secondary w-full"
+            >
+              {isImportingAi ? t('analytics.importingPdf') : t('analytics.importPdfAction')}
+            </button>
           </div>
         </div>
       </Modal>

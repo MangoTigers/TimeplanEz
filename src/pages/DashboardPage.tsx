@@ -5,13 +5,15 @@ import { supabase } from '@/lib/supabase'
 import { useToast } from '@/components/common/UI'
 import { Modal } from '@/components/common/UI'
 import { getShiftsForWeek, calculateWeeklyStats, formatCurrency, formatHoursMinutes, hoursToParts, partsToHours } from '@/lib/calculations'
-import { startOfWeek, format, addDays, isSameDay, parseISO } from 'date-fns'
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, subWeeks, format, addDays, isSameDay, parseISO, getISOWeek } from 'date-fns'
 import { StatCard } from '@/components/common/StatCard'
 import { ShiftListItem } from '@/components/shifts/ShiftListItem'
 import { DurationInput } from '@/components/shifts/DurationInput'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { defaultCategories } from '@/lib/reflections'
 import { useTranslation } from '@/lib/i18n'
+import { ExpandableCard } from '@/components/common/ExpandableCard'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 
 export const DashboardPage: React.FC = () => {
   const location = useLocation()
@@ -62,12 +64,41 @@ export const DashboardPage: React.FC = () => {
     }
   }
 
-  const thisWeekStart = startOfWeek(selectedDate, { weekStartsOn: 1 })
   const weekShifts = getShiftsForWeek(shifts, selectedDate)
+  const thisWeekStart = startOfWeek(selectedDate, { weekStartsOn: 1 })
+  const thisWeekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 })
+  const monthStart = startOfMonth(selectedDate)
+  const monthEnd = endOfMonth(selectedDate)
   const schoolHours = settings?.school_hours_per_week || 20
   const useSchoolHoursMode = settings?.use_school_hours_mode ?? true
   const categories = settings?.custom_categories?.length ? settings.custom_categories : defaultCategories
   const stats = calculateWeeklyStats(weekShifts, schoolHours)
+
+  const monthShifts = shifts.filter((shift) => {
+    const shiftDate = parseISO(shift.date)
+    return shiftDate >= monthStart && shiftDate <= monthEnd
+  })
+  const monthTotalHours = monthShifts.reduce((sum, shift) => sum + shift.hours_worked, 0)
+  const monthPaidHours = monthShifts.filter((shift) => shift.paid).reduce((sum, shift) => sum + shift.hours_worked, 0)
+
+  const weeklyTrend = React.useMemo(() => {
+    return Array.from({ length: 8 }, (_, index) => {
+      const cursorDate = subWeeks(selectedDate, 7 - index)
+      const rangeStart = startOfWeek(cursorDate, { weekStartsOn: 1 })
+      const rangeEnd = endOfWeek(cursorDate, { weekStartsOn: 1 })
+      const weekHours = shifts
+        .filter((shift) => {
+          const shiftDate = parseISO(shift.date)
+          return shiftDate >= rangeStart && shiftDate <= rangeEnd
+        })
+        .reduce((sum, shift) => sum + shift.hours_worked, 0)
+
+      return {
+        week: `W${getISOWeek(rangeStart)}`,
+        hours: Number(weekHours.toFixed(2)),
+      }
+    })
+  }, [selectedDate, shifts])
 
   const todayShifts = shifts.filter((s) =>
     isSameDay(parseISO(s.date), new Date())
@@ -174,19 +205,43 @@ export const DashboardPage: React.FC = () => {
           </button>
         </div>
 
-        {/* This Week Summary */}
+        {/* Summary */}
         <div className={`grid grid-cols-1 ${useSchoolHoursMode ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
-          <StatCard label={t('dashboard.totalHours')} value={formatHoursMinutes(stats.totalHours)} valueClassName="text-gray-900 dark:text-white" />
+          <StatCard label={t('dashboard.totalHoursThisWeek')} value={formatHoursMinutes(stats.totalHours)} valueClassName="text-gray-900 dark:text-white" />
+          <StatCard label={t('dashboard.totalHoursThisMonth')} value={formatHoursMinutes(monthTotalHours)} valueClassName="text-primary-600 dark:text-primary-400" />
           <StatCard label={t('dashboard.paidHours')} value={formatHoursMinutes(stats.paidHours)} valueClassName="text-success-600 dark:text-success-400" />
           {useSchoolHoursMode && (
             <StatCard label={t('dashboard.unpaidHours')} value={formatHoursMinutes(stats.unpaidHours)} valueClassName="text-warning-600 dark:text-warning-400" />
           )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <StatCard
-            label={t('dashboard.earnings')}
+            label={t('dashboard.weekEarnings')}
             value={formatCurrency(stats.paidHours * (settings?.hourly_rate || 120), settings?.currency || 'NOK')}
+            valueClassName="text-success-600 dark:text-success-400"
+          />
+          <StatCard
+            label={t('dashboard.monthEarnings')}
+            value={formatCurrency(monthPaidHours * (settings?.hourly_rate || 120), settings?.currency || 'NOK')}
             valueClassName="text-primary-600 dark:text-primary-400"
           />
         </div>
+
+        <ExpandableCard title={t('dashboard.visualOverview')} collapsedMaxHeight={360}>
+          <div className="mb-3 text-sm text-gray-600 dark:text-gray-400">
+            {format(thisWeekStart, 'dd MMM')} - {format(thisWeekEnd, 'dd MMM yyyy')} ({t('common.week')} {getISOWeek(thisWeekStart)})
+          </div>
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={weeklyTrend}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="week" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="hours" fill="#0ea5e9" />
+            </BarChart>
+          </ResponsiveContainer>
+        </ExpandableCard>
 
         {/* School Hours Tracker */}
         {useSchoolHoursMode && (
@@ -217,8 +272,7 @@ export const DashboardPage: React.FC = () => {
 
         {/* Today's Summary */}
         {todayShifts.length > 0 && (
-          <div className="card">
-            <h2 className="text-lg font-bold mb-4">{t('dashboard.todaysShifts')}</h2>
+          <ExpandableCard title={t('dashboard.todaysShifts')} collapsedMaxHeight={280}>
             <div className="space-y-2">
               {todayShifts.map((shift) => (
                 <ShiftListItem
@@ -230,12 +284,11 @@ export const DashboardPage: React.FC = () => {
                 />
               ))}
             </div>
-          </div>
+          </ExpandableCard>
         )}
 
         {/* Week Overview Calendar */}
-        <div className="card">
-          <h2 className="text-lg font-bold mb-4">{t('dashboard.weekOverview')}</h2>
+        <ExpandableCard title={t('dashboard.weekOverviewWeek', { week: getISOWeek(thisWeekStart) })} collapsedMaxHeight={260}>
           <div className="grid grid-cols-7 gap-2">
             {weekDays.map((date) => {
               const dayShifts = shifts.filter((s) => isSameDay(parseISO(s.date), date))
@@ -257,11 +310,10 @@ export const DashboardPage: React.FC = () => {
               )
             })}
           </div>
-        </div>
+        </ExpandableCard>
 
         {/* Recent Shifts */}
-        <div className="card">
-          <h2 className="text-lg font-bold mb-4">{t('dashboard.recentShifts')}</h2>
+        <ExpandableCard title={t('dashboard.recentShifts')} collapsedMaxHeight={360}>
           <div className="space-y-2">
             {shifts.slice(0, 5).map((shift) => (
               <ShiftListItem
@@ -272,7 +324,7 @@ export const DashboardPage: React.FC = () => {
               />
             ))}
           </div>
-        </div>
+        </ExpandableCard>
       </div>
       <Modal
         isOpen={isEditModalOpen}
