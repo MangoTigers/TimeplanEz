@@ -6,10 +6,12 @@ import { useToast } from '@/components/common/UI'
 import { Modal } from '@/components/common/UI'
 import { formatHoursMinutes } from '@/lib/calculations'
 import {
+  createDefaultReflectionValues,
   defaultReflectionFields,
   formatReflectionFieldValue,
   normalizeReflectionFields,
   parseReflection,
+  serializeReflection,
   type ReflectionData,
   type ReflectionFieldConfig,
 } from '@/lib/reflections'
@@ -33,7 +35,7 @@ import {
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, parseISO } from 'date-fns'
 import { useTranslation } from '@/lib/i18n'
 import { ExpandableCard } from '@/components/common/ExpandableCard'
-import { classifyEdgeFunctionError, getEdgeFunctionTroubleshootingHint } from '@/lib/edgeFunctions'
+import { getEffectiveOpenAiApiKey, parseImportFileWithAi } from '@/lib/ai'
 
 interface DayExportRow {
   date: string
@@ -59,9 +61,16 @@ export const AnalyticsPage: React.FC = () => {
   )
   const [selectedMonth, setSelectedMonth] = React.useState(new Date())
   const [isExportModalOpen, setIsExportModalOpen] = React.useState(false)
+  const [isImportModalOpen, setIsImportModalOpen] = React.useState(false)
   const [importAiFile, setImportAiFile] = React.useState<File | null>(null)
   const [isImportingAi, setIsImportingAi] = React.useState(false)
+  const [importText, setImportText] = React.useState<string>('')
+  const [isImportingText, setIsImportingText] = React.useState(false)
   const hasOpenAiKey = Boolean(settings?.openai_api_key?.trim())
+
+  // Year selector to show data for a given calendar year across analytics views
+  const currentYear = new Date().getFullYear()
+  const [selectedYear, setSelectedYear] = React.useState<number>(currentYear)
 
   React.useEffect(() => {
     if (user) {
@@ -115,13 +124,13 @@ export const AnalyticsPage: React.FC = () => {
   const monthEnd = endOfMonth(selectedMonth)
   const monthShifts = shifts.filter((s) => {
     const date = parseISO(s.date)
-    return date >= monthStart && date <= monthEnd
+    return date >= monthStart && date <= monthEnd && date.getFullYear() === selectedYear
   })
 
   const dailyData = eachDayOfInterval({ start: monthStart, end: monthEnd }).map((date) => {
     const dayShifts = shifts.filter((s) => {
       const shiftDate = parseISO(s.date)
-      return shiftDate.toDateString() === date.toDateString()
+      return shiftDate.toDateString() === date.toDateString() && shiftDate.getFullYear() === selectedYear
     })
 
     const totalHours = dayShifts.reduce((sum, s) => sum + s.hours_worked, 0)
@@ -251,13 +260,137 @@ export const AnalyticsPage: React.FC = () => {
     return btoa(binary)
   }
 
+  const handleImportText = async () => {
+    if (!user) {
+      return
+    }
+
+    const text = (importText || '').trim()
+    if (!text) {
+      toast.showToast({ type: 'warning', message: t('analytics.importNoRows') })
+      return
+    }
+
+    const effectiveApiKey = await getEffectiveOpenAiApiKey(settings?.openai_api_key)
+    if (!effectiveApiKey) {
+      toast.showToast({ type: 'warning', message: t('analytics.importRequiresAiKey') })
+      return
+    }
+
+    setIsImportingText(true)
+    try {
+      const utf8Encoded = unescape(encodeURIComponent(text))
+      const fileBase64 = btoa(utf8Encoded)
+
+      const parsedRows = await parseImportFileWithAi({
+        fileName: 'pasted.txt',
+        fileBase64,
+        fileType: 'text/plain',
+        reflectionFields,
+        apiKey: effectiveApiKey,
+      })
+
+      const importDates = Array.from(new Set(parsedRows.map((row) => row.date)))
+
+      const { data: existingRows, error: existingError } = await supabase
+        .from('shifts')
+        .select('date,hours_worked,paid,category,notes')
+        .eq('user_id', user.id)
+        .in('date', importDates)
+
+      if (existingError) {
+        throw existingError
+      }
+
+      const serializeRowKey = (row: {
+        date: string
+        hours_worked: number
+        paid: boolean | null
+        category: string
+        notes: string | null
+      }) => {
+        return [
+          row.date,
+          Number(row.hours_worked).toFixed(2),
+          row.paid === null ? 'null' : String(row.paid),
+          row.category.trim().toLowerCase(),
+          (row.notes || '').trim().toLowerCase(),
+        ].join('|')
+      }
+
+      const existingKeys = new Set(
+        (existingRows || []).map((row) =>
+          serializeRowKey({
+            date: String(row.date),
+            hours_worked: Number(row.hours_worked),
+            paid: row.paid === null ? null : Boolean(row.paid),
+            category: String(row.category || 'General'),
+            notes: row.notes || null,
+          })
+        )
+      )
+
+      const firstTextField = reflectionFields.find(
+        (field) => field.type === 'text' || field.type === 'textarea'
+      )
+
+      const insertRows = parsedRows
+        .filter((row) => !existingKeys.has(serializeRowKey(row)))
+        .map((row) => {
+          const values = createDefaultReflectionValues(reflectionFields)
+          if (firstTextField && row.reflection) {
+            values[firstTextField.id] = row.reflection
+          }
+
+          return {
+            user_id: user.id,
+            date: row.date,
+            hours_worked: row.hours_worked,
+            paid: row.paid,
+            category: row.category || 'General',
+            notes: row.notes || null,
+            reflection: row.reflection && firstTextField ? serializeReflection({ values }) : null,
+            enhanced_reflection: row.enhanced_reflection || null,
+          }
+        })
+
+      if (insertRows.length) {
+        const { error: insertError } = await supabase.from('shifts').insert(insertRows)
+        if (insertError) {
+          throw insertError
+        }
+      }
+
+      const importedCount = insertRows.length
+      const skippedCount = Math.max(0, parsedRows.length - insertRows.length)
+
+      if (importedCount <= 0) {
+        toast.showToast({ type: 'warning', message: t('analytics.importNoRows') })
+      } else {
+        toast.showToast({
+          type: 'success',
+          message: t('analytics.importSuccess', { count: importedCount, skipped: skippedCount }),
+        })
+      }
+
+      await loadShifts()
+      setIsImportModalOpen(false)
+      setImportText('')
+    } catch (error: any) {
+      toast.showToast({ type: 'error', message: `${t('analytics.importFailed')} ${error?.message || ''}`.trim() })
+    } finally {
+      setIsImportingText(false)
+    }
+  }
+
   const handleImportAi = async () => {
     if (!user || !importAiFile) {
       toast.showToast({ type: 'warning', message: t('analytics.importPickPdfFirst') })
       return
     }
 
-    if (!hasOpenAiKey) {
+    const effectiveApiKey = await getEffectiveOpenAiApiKey(settings?.openai_api_key)
+    if (!effectiveApiKey) {
       toast.showToast({ type: 'warning', message: t('analytics.importRequiresAiKey') })
       return
     }
@@ -280,20 +413,87 @@ export const AnalyticsPage: React.FC = () => {
     try {
       const fileBase64 = await fileToBase64(importAiFile)
 
-      const { data, error } = await supabase.functions.invoke('import-pdf-history', {
-        body: {
-          fileName: importAiFile.name,
-          fileBase64,
-          fileType: importAiFile.type || null,
-          reflectionFields,
-          openaiApiKey: settings?.openai_api_key || null,
-        },
+      const parsedRows = await parseImportFileWithAi({
+        fileName: importAiFile.name,
+        fileBase64,
+        fileType: importAiFile.type || null,
+        reflectionFields,
+        apiKey: effectiveApiKey,
       })
 
-      if (error) throw error
+      const importDates = Array.from(new Set(parsedRows.map((row) => row.date)))
 
-      const importedCount = Number(data?.importedCount || 0)
-      const skippedCount = Number(data?.skippedDuplicates || 0)
+      const { data: existingRows, error: existingError } = await supabase
+        .from('shifts')
+        .select('date,hours_worked,paid,category,notes')
+        .eq('user_id', user.id)
+        .in('date', importDates)
+
+      if (existingError) {
+        throw existingError
+      }
+
+      const serializeRowKey = (row: {
+        date: string
+        hours_worked: number
+        paid: boolean | null
+        category: string
+        notes: string | null
+      }) => {
+        return [
+          row.date,
+          Number(row.hours_worked).toFixed(2),
+          row.paid === null ? 'null' : String(row.paid),
+          row.category.trim().toLowerCase(),
+          (row.notes || '').trim().toLowerCase(),
+        ].join('|')
+      }
+
+      const existingKeys = new Set(
+        (existingRows || []).map((row) =>
+          serializeRowKey({
+            date: String(row.date),
+            hours_worked: Number(row.hours_worked),
+            paid: row.paid === null ? null : Boolean(row.paid),
+            category: String(row.category || 'General'),
+            notes: row.notes || null,
+          })
+        )
+      )
+
+      const firstTextField = reflectionFields.find(
+        (field) => field.type === 'text' || field.type === 'textarea'
+      )
+
+      const insertRows = parsedRows
+        .filter((row) => !existingKeys.has(serializeRowKey(row)))
+        .map((row) => {
+          const values = createDefaultReflectionValues(reflectionFields)
+          if (firstTextField && row.reflection) {
+            values[firstTextField.id] = row.reflection
+          }
+
+          return {
+            user_id: user.id,
+            date: row.date,
+            hours_worked: row.hours_worked,
+            paid: row.paid,
+            category: row.category || 'General',
+            notes: row.notes || null,
+            reflection: row.reflection && firstTextField ? serializeReflection({ values }) : null,
+            enhanced_reflection: row.enhanced_reflection || null,
+          }
+        })
+
+      if (insertRows.length) {
+        const { error: insertError } = await supabase.from('shifts').insert(insertRows)
+        if (insertError) {
+          throw insertError
+        }
+      }
+
+      const importedCount = insertRows.length
+      const skippedCount = Math.max(0, parsedRows.length - insertRows.length)
 
       if (importedCount <= 0) {
         toast.showToast({ type: 'warning', message: t('analytics.importNoRows') })
@@ -310,16 +510,9 @@ export const AnalyticsPage: React.FC = () => {
       await loadShifts()
       setImportAiFile(null)
     } catch (error: any) {
-      const code = classifyEdgeFunctionError(error)
-      const message =
-        code === 'not_deployed'
-          ? t('errors.edgeFunctionNotDeployed', { name: 'import-pdf-history' })
-          : code === 'network'
-            ? `${t('errors.edgeFunctionNetwork')} ${getEdgeFunctionTroubleshootingHint()}`
-            : error?.message || t('errors.edgeFunctionUnknown')
       toast.showToast({
         type: 'error',
-        message,
+        message: `${t('analytics.importFailed')} ${error?.message || ''}`.trim(),
       })
     } finally {
       setIsImportingAi(false)
@@ -331,9 +524,32 @@ export const AnalyticsPage: React.FC = () => {
       <div className="space-y-8">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{t('layout.analytics')}</h1>
-          <button onClick={() => setIsExportModalOpen(true)} className="btn-secondary">
-            📥 {t('analytics.exportData')}
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setIsExportModalOpen(true)} className="btn-secondary">
+              📥 {t('analytics.exportData')}
+            </button>
+            <button onClick={() => setIsImportModalOpen(true)} className="btn-secondary">
+              📤 {t('common.import')}
+            </button>
+          </div>
+        </div>
+
+        {/* Year selector to filter analytics data by calendar year */}
+        <div className="card p-3 flex items-center gap-3 justify-end">
+          <span className="text-sm text-gray-700 dark:text-gray-300">{t('common.year')}</span>
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+            className="input-base h-8"
+          >
+            {Array.from({ length: 9 }, (_, i) => currentYear - 4 + i)
+              .filter((y) => y <= currentYear + 2)
+              .map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+          </select>
         </div>
 
         {/* Month Selector */}
@@ -456,29 +672,63 @@ export const AnalyticsPage: React.FC = () => {
           <div className="bg-primary-50 dark:bg-primary-900/20 p-3 rounded-lg text-sm text-primary-900 dark:text-primary-200">
             {t('analytics.exportDescription')}
           </div>
+        </div>
+      </Modal>
 
+      {/* Import Modal */}
+      <Modal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        title={t('analytics.importData')}
+        footer={
+          <div className="flex gap-2">
+            <button onClick={() => setIsImportModalOpen(false)} className="btn-secondary flex-1">
+              {t('common.close')}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-6">
           <div className="border border-gray-200 dark:border-slate-700 rounded-xl p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('analytics.importPdfTitle')}</h3>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('analytics.importFromFile')}</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400">{t('analytics.importPdfHelp')}</p>
-
             <input
               type="file"
               accept="application/pdf,text/plain,text/csv,.pdf,.txt,.csv"
               onChange={(e) => setImportAiFile(e.target.files?.[0] || null)}
               className="input-base w-full"
             />
-
             {!hasOpenAiKey && (
               <p className="text-xs text-warning-700 dark:text-warning-300">{t('analytics.importRequiresAiKey')}</p>
             )}
-
             <button
               type="button"
               onClick={handleImportAi}
-              disabled={isImportingAi || !importAiFile || !hasOpenAiKey}
+              disabled={isImportingAi || !importAiFile}
               className="btn-secondary w-full"
             >
               {isImportingAi ? t('analytics.importingPdf') : t('analytics.importPdfAction')}
+            </button>
+          </div>
+
+          <div className="border border-gray-200 dark:border-slate-700 rounded-xl p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('analytics.importFromText')}</h3>
+            <textarea
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              placeholder={t('analytics.pasteTextPlaceholder')}
+              className="input-base w-full h-40 resize-y"
+            />
+            {!hasOpenAiKey && (
+              <p className="text-xs text-warning-700 dark:text-warning-300">{t('analytics.importRequiresAiKey')}</p>
+            )}
+            <button
+              type="button"
+              onClick={handleImportText}
+              disabled={isImportingText || !importText.trim()}
+              className="btn-secondary w-full"
+            >
+              {isImportingText ? t('analytics.importingText') : t('analytics.importTextAction')}
             </button>
           </div>
         </div>

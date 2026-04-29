@@ -36,6 +36,11 @@ export const DashboardPage: React.FC = () => {
   const [selectedDate] = React.useState<Date>(new Date())
   const { t } = useTranslation()
 
+  // Period and year selectors
+  type Period = 'week' | 'month' | 'year'
+  const [period, setPeriod] = React.useState<Period>('week')
+  const [selectedYear, setSelectedYear] = React.useState<number>(new Date().getFullYear())
+
   React.useEffect(() => {
     if (user) {
       loadData()
@@ -80,6 +85,18 @@ export const DashboardPage: React.FC = () => {
   })
   const monthTotalHours = monthShifts.reduce((sum, shift) => sum + shift.hours_worked, 0)
   const monthPaidHours = monthShifts.filter((shift) => shift.paid).reduce((sum, shift) => sum + shift.hours_worked, 0)
+
+  // Period-filtered aggregates for top summary cards
+  const periodShifts = React.useMemo(() => {
+    if (period === 'week') return weekShifts
+    if (period === 'month') return monthShifts
+    // year
+    return shifts.filter((s) => parseISO(s.date).getFullYear() === selectedYear)
+  }, [period, weekShifts, monthShifts, shifts, selectedYear])
+
+  const periodTotalHours = React.useMemo(() => periodShifts.reduce((sum, s) => sum + s.hours_worked, 0), [periodShifts])
+  const periodPaidHours = React.useMemo(() => periodShifts.filter((s) => s.paid).reduce((sum, s) => sum + s.hours_worked, 0), [periodShifts])
+  const periodUnpaidHours = Math.max(0, periodTotalHours - periodPaidHours)
 
   const weeklyTrend = React.useMemo(() => {
     return Array.from({ length: 8 }, (_, index) => {
@@ -191,27 +208,47 @@ export const DashboardPage: React.FC = () => {
     <Layout>
       <div className="space-y-8">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{t('layout.dashboard')}</h1>
-          <button
-            onClick={() => {
-              const params = new URLSearchParams(location.search)
-              params.set('log', 'true')
-              navigate(`${location.pathname}?${params.toString()}`)
-            }}
-            className="btn-primary"
-          >
-            ➕ {t('dashboard.logHours')}
-          </button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-2">
+              <select value={period} onChange={(e) => setPeriod(e.target.value as any)} className="input-base h-9">
+                <option value="week">{t('entries.filterWeek')}</option>
+                <option value="month">{t('entries.filterMonth')}</option>
+                <option value="year">{t('common.year')}</option>
+              </select>
+              {period === 'year' && (
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="input-base h-9"
+                >
+                  {Array.from({ length: 9 }, (_, i) => new Date().getFullYear() - 4 + i).map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <button
+              onClick={() => {
+                const params = new URLSearchParams(location.search)
+                params.set('log', 'true')
+                navigate(`${location.pathname}?${params.toString()}`)
+              }}
+              className="btn-primary"
+            >
+              ➕ {t('dashboard.logHours')}
+            </button>
+          </div>
         </div>
 
         {/* Summary */}
-        <div className={`grid grid-cols-1 ${useSchoolHoursMode ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
-          <StatCard label={t('dashboard.totalHoursThisWeek')} value={formatHoursMinutes(stats.totalHours)} valueClassName="text-gray-900 dark:text-white" />
-          <StatCard label={t('dashboard.totalHoursThisMonth')} value={formatHoursMinutes(monthTotalHours)} valueClassName="text-primary-600 dark:text-primary-400" />
-          <StatCard label={t('dashboard.paidHours')} value={formatHoursMinutes(stats.paidHours)} valueClassName="text-success-600 dark:text-success-400" />
+        <div className={`grid grid-cols-1 ${useSchoolHoursMode ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
+          <StatCard label={t('dashboard.totalHours')} value={formatHoursMinutes(periodTotalHours)} valueClassName="text-gray-900 dark:text-white" />
+          <StatCard label={t('dashboard.paidHours')} value={formatHoursMinutes(periodPaidHours)} valueClassName="text-success-600 dark:text-success-400" />
           {useSchoolHoursMode && (
-            <StatCard label={t('dashboard.unpaidHours')} value={formatHoursMinutes(stats.unpaidHours)} valueClassName="text-warning-600 dark:text-warning-400" />
+            <StatCard label={t('dashboard.unpaidHours')} value={formatHoursMinutes(periodUnpaidHours)} valueClassName="text-warning-600 dark:text-warning-400" />
           )}
         </div>
 

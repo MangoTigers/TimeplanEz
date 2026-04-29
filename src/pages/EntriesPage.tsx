@@ -11,6 +11,7 @@ import { formatHoursMinutes } from '@/lib/calculations'
 import { useTranslation } from '@/lib/i18n'
 
 type EntryFilter = 'day' | 'week' | 'month'
+type SortMode = 'date' | 'created'
 
 export const EntriesPage: React.FC = () => {
   const { user } = useAuthStore()
@@ -19,6 +20,14 @@ export const EntriesPage: React.FC = () => {
   const { t } = useTranslation()
   const [filterMode, setFilterMode] = React.useState<EntryFilter>('week')
   const [anchorDate, setAnchorDate] = React.useState(format(new Date(), 'yyyy-MM-dd'))
+  const [sortMode, setSortMode] = React.useState<SortMode>('date')
+  const [selectedYear, setSelectedYear] = React.useState<number>(new Date().getFullYear())
+
+  React.useEffect(() => {
+    // Keep selectedYear in sync when anchorDate changes externally
+    const y = parseISO(anchorDate).getFullYear()
+    if (y !== selectedYear) setSelectedYear(y)
+  }, [anchorDate])
 
   React.useEffect(() => {
     if (user) {
@@ -48,7 +57,7 @@ export const EntriesPage: React.FC = () => {
     const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 })
     const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 })
 
-    return shifts
+    const base = shifts
       .filter((shift) => {
         const shiftDate = parseISO(shift.date)
 
@@ -65,7 +74,11 @@ export const EntriesPage: React.FC = () => {
           shiftDate.getMonth() === selectedDate.getMonth()
         )
       })
-      .sort((a, b) => (a.date < b.date ? 1 : -1))
+    // Apply sorting
+    if (sortMode === 'created') {
+      return base.sort((a, b) => (new Date(a.created_at).getTime() < new Date(b.created_at).getTime() ? 1 : -1))
+    }
+    return base.sort((a, b) => (a.date < b.date ? 1 : -1))
   }, [anchorDate, filterMode, shifts])
 
   const totalHours = filteredShifts.reduce((sum, shift) => sum + shift.hours_worked, 0)
@@ -78,7 +91,7 @@ export const EntriesPage: React.FC = () => {
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{t('entries.pageTitle')}</h1>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <select
               value={filterMode}
               onChange={(e) => setFilterMode(e.target.value as EntryFilter)}
@@ -95,6 +108,33 @@ export const EntriesPage: React.FC = () => {
               onChange={(e) => setAnchorDate(e.target.value)}
               className="input-base"
             />
+
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={selectedYear}
+                onChange={(e) => {
+                  const newYear = Number(e.target.value)
+                  setSelectedYear(newYear)
+                  const d = parseISO(anchorDate)
+                  const updated = new Date(newYear, d.getMonth(), d.getDate())
+                  setAnchorDate(format(updated, 'yyyy-MM-dd'))
+                }}
+                className="input-base"
+              >
+                {Array.from({ length: 9 }, (_, i) => new Date().getFullYear() - 4 + i).map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+              <select
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value as SortMode)}
+                className="input-base"
+                title={t('common.sortBy')}
+              >
+                <option value="date">{t('entries.sortNewestDate')}</option>
+                <option value="created">{t('entries.sortRecentlyAdded')}</option>
+              </select>
+            </div>
           </div>
         </div>
 

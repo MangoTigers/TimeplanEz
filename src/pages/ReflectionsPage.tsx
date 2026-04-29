@@ -18,6 +18,7 @@ import {
 } from '@/lib/reflections'
 import { useTranslation } from '@/lib/i18n'
 import { classifyEdgeFunctionError, getEdgeFunctionTroubleshootingHint } from '@/lib/edgeFunctions'
+import { enhanceReflectionWithAi, getEffectiveOpenAiApiKey, parseImportFileWithAi, extractTextFromPdfBase64 } from '@/lib/ai'
 
 interface ShiftWithReflection {
   id: string
@@ -27,6 +28,7 @@ interface ShiftWithReflection {
   category: string
   reflection: string | null
   enhanced_reflection: string | null
+  created_at?: string
 }
 
 interface DayReflectionGroup {
@@ -49,6 +51,8 @@ interface ImportedEntryDraft {
   category: string
   notes: string
   reflection: string
+  enhancedPreview?: string | null
+  enhancing?: boolean
 }
 
 const emptyReflectionData: ReflectionData = {
@@ -80,6 +84,9 @@ export const ReflectionsPage: React.FC = () => {
   const [reviewEntries, setReviewEntries] = React.useState<ImportedEntryDraft[]>([])
   const [isReviewModalOpen, setIsReviewModalOpen] = React.useState(false)
   const [isApplyingImport, setIsApplyingImport] = React.useState(false)
+  type SortMode = 'date_desc' | 'date_asc' | 'created_desc' | 'created_asc' | 'hours_desc' | 'has_reflection_first'
+  const [sortMode, setSortMode] = React.useState<SortMode>('date_desc')
+  const [selectedYear, setSelectedYear] = React.useState<number>(new Date().getFullYear())
 
   React.useEffect(() => {
     if (user) {
@@ -124,7 +131,12 @@ export const ReflectionsPage: React.FC = () => {
   const dayGroups = React.useMemo(() => {
     const grouped = new Map<string, ShiftWithReflection[]>()
 
-    entries.forEach((entry) => {
+    const filteredByYear = entries.filter((entry) => {
+      const d = parseISO(entry.date)
+      return d.getFullYear() === selectedYear
+    })
+
+    filteredByYear.forEach((entry) => {
       const next = grouped.get(entry.date) || []
       next.push(entry)
       grouped.set(entry.date, next)
@@ -132,13 +144,18 @@ export const ReflectionsPage: React.FC = () => {
 
     const q = searchTerm.toLowerCase()
 
-    return Array.from(grouped.entries())
+    const groups = Array.from(grouped.entries())
       .map(([date, shifts]) => {
         const totalHours = shifts.reduce((sum, shift) => sum + shift.hours_worked, 0)
         const paidHours = shifts.filter((shift) => shift.paid).reduce((sum, shift) => sum + shift.hours_worked, 0)
         const unpaidHours = totalHours - paidHours
         const dayReflection = getDayReflection(shifts)
         const categories = Array.from(new Set(shifts.map((shift) => shift.category || 'General')))
+        const createdAt = Math.max(
+          ...shifts
+            .map((s) => (s.created_at ? new Date(s.created_at).getTime() : 0))
+            .filter((n) => Number.isFinite(n) && n > 0)
+        )
 
         return {
           date,
@@ -150,6 +167,7 @@ export const ReflectionsPage: React.FC = () => {
           reflection: dayReflection.reflection,
           enhancedReflection: dayReflection.enhancedReflection,
           hasReflection: dayReflection.hasReflection,
+          createdAt,
         }
       })
       .filter((group) => {
@@ -166,8 +184,29 @@ export const ReflectionsPage: React.FC = () => {
           format(parseISO(group.date), 'MMMM dd, yyyy').toLowerCase().includes(q)
         )
       })
-      .sort((a, b) => (a.date < b.date ? 1 : -1))
-  }, [entries, searchTerm])
+    // Apply sorting
+    groups.sort((a, b) => {
+      switch (sortMode) {
+        case 'date_asc':
+          return a.date < b.date ? -1 : 1
+        case 'created_desc':
+          return (b.createdAt || 0) - (a.createdAt || 0)
+        case 'created_asc':
+          return (a.createdAt || 0) - (b.createdAt || 0)
+        case 'hours_desc':
+          return b.totalHours - a.totalHours
+        case 'has_reflection_first':
+          if (a.hasReflection && !b.hasReflection) return -1
+          if (!a.hasReflection && b.hasReflection) return 1
+          return a.date < b.date ? 1 : -1
+        case 'date_desc':
+        default:
+          return a.date < b.date ? 1 : -1
+      }
+    })
+
+    return groups
+  }, [entries, searchTerm, sortMode, selectedYear])
 
   const selectedGroup = React.useMemo(() => {
     if (!selectedDate) return null
@@ -237,7 +276,8 @@ export const ReflectionsPage: React.FC = () => {
       return
     }
 
-    if (!hasOpenAiKey) {
+    const effectiveApiKey = await getEffectiveOpenAiApiKey(settings?.openai_api_key)
+    if (!effectiveApiKey) {
       toast.showToast({
         type: 'warning',
         message: 'Add your OpenAI API key in Settings > AI Settings to use enhancement.',
@@ -248,17 +288,8 @@ export const ReflectionsPage: React.FC = () => {
     setLoadingEnhance(true)
 
     try {
-      const { data, error } = await supabase.functions.invoke('enhance-reflection', {
-        body: {
-          reflection: sourceText,
-          openaiApiKey: settings?.openai_api_key || null,
-        },
-      })
-
-      if (error) throw error
-      if (!data?.enhanced_text) throw new Error('No enhancement received')
-
-      setEnhancedText(data.enhanced_text)
+      const enhancedTextResult = await enhanceReflectionWithAi(sourceText, effectiveApiKey)
+      setEnhancedText(enhancedTextResult)
       toast.showToast({ type: 'success', message: 'Reflection enhanced!' })
     } catch (error: any) {
       const code = classifyEdgeFunctionError(error)
@@ -334,7 +365,8 @@ export const ReflectionsPage: React.FC = () => {
       return
     }
 
-    if (!hasOpenAiKey) {
+    const effectiveApiKey = await getEffectiveOpenAiApiKey(settings?.openai_api_key)
+    if (!effectiveApiKey) {
       toast.showToast({ type: 'warning', message: t('analytics.importRequiresAiKey') })
       return
     }
@@ -356,20 +388,34 @@ export const ReflectionsPage: React.FC = () => {
     try {
       const fileBase64 = await fileToBase64(importAiFile)
 
-      const { data, error } = await supabase.functions.invoke('import-pdf-history', {
-        body: {
-          mode: 'preview',
-          fileName: importAiFile.name,
-          fileBase64,
-          fileType: importAiFile.type || null,
-          reflectionFields,
-          openaiApiKey: settings?.openai_api_key || null,
-        },
+      // If PDF, attempt to extract text client-side to avoid large binary uploads
+      let useFileBase64 = fileBase64
+      let useFileName = importAiFile.name
+      let useFileType = importAiFile.type || null
+
+      const isPdf = (importAiFile.type === 'application/pdf') || importAiFile.name.toLowerCase().endsWith('.pdf')
+      if (isPdf) {
+        try {
+          const extractedText = await extractTextFromPdfBase64(fileBase64)
+          if (extractedText && extractedText.trim()) {
+            // Convert extracted text to base64 (UTF-8 safe)
+            const textBase64 = btoa(unescape(encodeURIComponent(extractedText)))
+            useFileBase64 = textBase64
+            useFileName = importAiFile.name.replace(/\.pdf$/i, '.txt')
+            useFileType = 'text/plain'
+          }
+        } catch {
+          // fallback to original binary if extraction fails
+        }
+      }
+
+      const previewRows = await parseImportFileWithAi({
+        fileName: useFileName,
+        fileBase64: useFileBase64,
+        fileType: useFileType,
+        reflectionFields,
+        apiKey: effectiveApiKey,
       })
-
-      if (error) throw error
-
-      const previewRows = Array.isArray(data?.entries) ? data.entries : []
       if (!previewRows.length) {
         toast.showToast({ type: 'warning', message: t('analytics.importNoRows') })
       } else {
@@ -394,7 +440,7 @@ export const ReflectionsPage: React.FC = () => {
           ? t('errors.edgeFunctionNotDeployed', { name: 'import-pdf-history' })
           : code === 'network'
             ? `${t('errors.edgeFunctionNetwork')} ${getEdgeFunctionTroubleshootingHint()}`
-            : error?.message || t('errors.edgeFunctionUnknown')
+            : `${t('errors.edgeFunctionUnknown')} ${error?.message || ''}`.trim()
       toast.showToast({
         type: 'error',
         message,
@@ -415,6 +461,8 @@ export const ReflectionsPage: React.FC = () => {
         category: 'General',
         notes: '',
         reflection: '',
+        enhancedPreview: null,
+        enhancing: false,
       },
     ])
   }
@@ -427,6 +475,33 @@ export const ReflectionsPage: React.FC = () => {
     setReviewEntries((prev) =>
       prev.map((entry) => (entry.clientId === clientId ? { ...entry, ...updates } : entry))
     )
+  }
+
+  const handleEnhanceRow = async (clientId: string) => {
+    const row = reviewEntries.find((r) => r.clientId === clientId)
+    if (!row) return
+
+    const source = (row.reflection || '').trim()
+    if (!source) {
+      toast.showToast({ type: 'warning', message: t('import.enhanceFillReflection') })
+      return
+    }
+
+    const effectiveApiKey = await getEffectiveOpenAiApiKey(settings?.openai_api_key)
+    if (!effectiveApiKey) {
+      toast.showToast({ type: 'warning', message: t('analytics.importRequiresAiKey') })
+      return
+    }
+
+    updateReviewRow(clientId, { enhancing: true })
+    try {
+      const enhanced = await enhanceReflectionWithAi(source, effectiveApiKey)
+      updateReviewRow(clientId, { enhancedPreview: enhanced })
+    } catch (err: any) {
+      toast.showToast({ type: 'error', message: err?.message || t('import.enhanceFailed') })
+    } finally {
+      updateReviewRow(clientId, { enhancing: false })
+    }
   }
 
   const serializeRowKey = (row: {
@@ -578,9 +653,6 @@ export const ReflectionsPage: React.FC = () => {
             <button onClick={handleExportReflectionsCSV} className="btn-secondary">
               {t('reflections.exportCsv')}
             </button>
-            <button onClick={handleImportAi} disabled={isImportingAi || !importAiFile || !hasOpenAiKey} className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed">
-              {isImportingAi ? t('analytics.importingPdf') : t('analytics.importPdfAction')}
-            </button>
           </div>
         </div>
 
@@ -593,26 +665,36 @@ export const ReflectionsPage: React.FC = () => {
             className="input-base w-full"
           />
 
-          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-3 items-center">
-            <input
-              type="file"
-              accept="application/pdf,text/plain,text/csv,.pdf,.txt,.csv"
-              onChange={(e) => setImportAiFile(e.target.files?.[0] || null)}
-              className="input-base w-full"
-            />
-            <button
-              type="button"
-              onClick={handleImportAi}
-              disabled={isImportingAi || !importAiFile || !hasOpenAiKey}
-              className="btn-secondary w-full md:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isImportingAi ? t('analytics.importingPdf') : t('analytics.importPdfAction')}
-            </button>
-          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-700 dark:text-gray-300">{t('common.year')}</label>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="input-base"
+              >
+                {Array.from({ length: 9 }, (_, i) => new Date().getFullYear() - 4 + i).map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
 
-          {!hasOpenAiKey && (
-            <p className="text-xs text-warning-700 dark:text-warning-300">{t('analytics.importRequiresAiKey')}</p>
-          )}
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-700 dark:text-gray-300">{t('common.sortBy')}</label>
+              <select
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value as any)}
+                className="input-base"
+              >
+                <option value="date_desc">{t('entries.sortNewestDate')}</option>
+                <option value="date_asc">{t('reflections.sortOldestDate')}</option>
+                <option value="created_desc">{t('entries.sortRecentlyAdded')}</option>
+                <option value="created_asc">{t('reflections.sortOldestAdded')}</option>
+                <option value="hours_desc">{t('reflections.sortMostHours')}</option>
+                <option value="has_reflection_first">{t('reflections.sortHasReflectionFirst')}</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         {dayGroups.length > 0 ? (
@@ -814,9 +896,9 @@ export const ReflectionsPage: React.FC = () => {
 
             <button
               onClick={handleEnhanceWithAI}
-              disabled={loadingEnhance || !hasOpenAiKey}
-              className={`w-full ${hasOpenAiKey ? 'btn-secondary' : 'btn-secondary opacity-50 cursor-not-allowed'}`}
-              title={hasOpenAiKey ? 'Enhance reflection with AI' : 'Add your OpenAI API key in Settings > AI Settings to enable this feature'}
+              disabled={loadingEnhance}
+              className="w-full btn-secondary"
+              title="Enhance reflection with AI"
             >
               {loadingEnhance ? 'Enhancing...' : 'Enhance with AI'}
             </button>
@@ -980,6 +1062,34 @@ export const ReflectionsPage: React.FC = () => {
                       onChange={(e) => updateReviewRow(entry.clientId, { reflection: e.target.value })}
                       className="input-base w-full h-20 resize-none"
                     />
+
+                    <div className="mt-2 flex gap-2 items-start">
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => handleEnhanceRow(entry.clientId)}
+                        disabled={entry.enhancing}
+                      >
+                        {entry.enhancing ? t('import.enhancing') : t('import.enhance')}
+                      </button>
+
+                      {entry.enhancedPreview && (
+                        <div className="flex-1">
+                          <div className="p-2 bg-primary-50 dark:bg-primary-900/20 rounded">
+                            <p className="text-sm whitespace-pre-wrap">{entry.enhancedPreview}</p>
+                          </div>
+                          <div className="flex justify-end mt-2">
+                            <button
+                              type="button"
+                              className="btn-primary"
+                              onClick={() => updateReviewRow(entry.clientId, { reflection: entry.enhancedPreview || '' , enhancedPreview: null })}
+                            >
+                              {t('import.useEnhanced')}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
