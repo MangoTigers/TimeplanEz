@@ -18,7 +18,7 @@ import {
 } from '@/lib/reflections'
 import { useTranslation } from '@/lib/i18n'
 import { classifyEdgeFunctionError, getEdgeFunctionTroubleshootingHint } from '@/lib/edgeFunctions'
-import { enhanceReflectionWithAi, getEffectiveOpenAiApiKey, parseImportFileWithAi, extractTextFromPdfBase64 } from '@/lib/ai'
+import { enhanceReflectionWithAi, getEffectiveOpenAiApiKey } from '@/lib/ai'
 
 interface ShiftWithReflection {
   id: string
@@ -79,8 +79,7 @@ export const ReflectionsPage: React.FC = () => {
   const [enhancedText, setEnhancedText] = React.useState('')
   const [loadingEnhance, setLoadingEnhance] = React.useState(false)
   const [searchTerm, setSearchTerm] = React.useState('')
-  const [importAiFile, setImportAiFile] = React.useState<File | null>(null)
-  const [isImportingAi, setIsImportingAi] = React.useState(false)
+  // Import UI moved to Analytics page; remove local file import state
   const [reviewEntries, setReviewEntries] = React.useState<ImportedEntryDraft[]>([])
   const [isReviewModalOpen, setIsReviewModalOpen] = React.useState(false)
   const [isApplyingImport, setIsApplyingImport] = React.useState(false)
@@ -345,110 +344,7 @@ export const ReflectionsPage: React.FC = () => {
     toast.showToast({ type: 'success', message: t('reflections.exportSuccess') })
   }
 
-  const fileToBase64 = async (file: File): Promise<string> => {
-    const arrayBuffer = await file.arrayBuffer()
-    let binary = ''
-    const bytes = new Uint8Array(arrayBuffer)
-    const chunkSize = 0x8000
-
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      const chunk = bytes.subarray(i, i + chunkSize)
-      binary += String.fromCharCode(...chunk)
-    }
-
-    return btoa(binary)
-  }
-
-  const handleImportAi = async () => {
-    if (!user || !importAiFile) {
-      toast.showToast({ type: 'warning', message: t('analytics.importPickPdfFirst') })
-      return
-    }
-
-    const effectiveApiKey = await getEffectiveOpenAiApiKey(settings?.openai_api_key)
-    if (!effectiveApiKey) {
-      toast.showToast({ type: 'warning', message: t('analytics.importRequiresAiKey') })
-      return
-    }
-
-    const allowedTypes = ['application/pdf', 'text/plain', 'text/csv']
-    if (importAiFile.type && !allowedTypes.includes(importAiFile.type)) {
-      toast.showToast({ type: 'warning', message: t('analytics.importOnlyPdf') })
-      return
-    }
-
-    const maxBytes = 8 * 1024 * 1024
-    if (importAiFile.size > maxBytes) {
-      toast.showToast({ type: 'warning', message: t('analytics.importPdfTooLarge') })
-      return
-    }
-
-    setIsImportingAi(true)
-
-    try {
-      const fileBase64 = await fileToBase64(importAiFile)
-
-      // If PDF, attempt to extract text client-side to avoid large binary uploads
-      let useFileBase64 = fileBase64
-      let useFileName = importAiFile.name
-      let useFileType = importAiFile.type || null
-
-      const isPdf = (importAiFile.type === 'application/pdf') || importAiFile.name.toLowerCase().endsWith('.pdf')
-      if (isPdf) {
-        try {
-          const extractedText = await extractTextFromPdfBase64(fileBase64)
-          if (extractedText && extractedText.trim()) {
-            // Convert extracted text to base64 (UTF-8 safe)
-            const textBase64 = btoa(unescape(encodeURIComponent(extractedText)))
-            useFileBase64 = textBase64
-            useFileName = importAiFile.name.replace(/\.pdf$/i, '.txt')
-            useFileType = 'text/plain'
-          }
-        } catch {
-          // fallback to original binary if extraction fails
-        }
-      }
-
-      const previewRows = await parseImportFileWithAi({
-        fileName: useFileName,
-        fileBase64: useFileBase64,
-        fileType: useFileType,
-        reflectionFields,
-        apiKey: effectiveApiKey,
-      })
-      if (!previewRows.length) {
-        toast.showToast({ type: 'warning', message: t('analytics.importNoRows') })
-      } else {
-        setReviewEntries(
-          previewRows.map((row: any, index: number) => ({
-            clientId: `draft-${Date.now()}-${index}`,
-            date: String(row.date || ''),
-            hours_worked: Number(row.hours_worked || 0),
-            paid: typeof row.paid === 'boolean' ? row.paid : null,
-            category: String(row.category || 'General'),
-            notes: String(row.notes || ''),
-            reflection: String(row.reflection || ''),
-          }))
-        )
-        setIsReviewModalOpen(true)
-      }
-      setImportAiFile(null)
-    } catch (error: any) {
-      const code = classifyEdgeFunctionError(error)
-      const message =
-        code === 'not_deployed'
-          ? t('errors.edgeFunctionNotDeployed', { name: 'import-pdf-history' })
-          : code === 'network'
-            ? `${t('errors.edgeFunctionNetwork')} ${getEdgeFunctionTroubleshootingHint()}`
-            : `${t('errors.edgeFunctionUnknown')} ${error?.message || ''}`.trim()
-      toast.showToast({
-        type: 'error',
-        message,
-      })
-    } finally {
-      setIsImportingAi(false)
-    }
-  }
+  // Import AI flow removed from this page; available on Analytics page
 
   const addReviewRow = () => {
     setReviewEntries((prev) => [

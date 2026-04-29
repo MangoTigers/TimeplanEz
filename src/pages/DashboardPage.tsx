@@ -83,7 +83,6 @@ export const DashboardPage: React.FC = () => {
     const shiftDate = parseISO(shift.date)
     return shiftDate >= monthStart && shiftDate <= monthEnd
   })
-  const monthTotalHours = monthShifts.reduce((sum, shift) => sum + shift.hours_worked, 0)
   const monthPaidHours = monthShifts.filter((shift) => shift.paid).reduce((sum, shift) => sum + shift.hours_worked, 0)
 
   // Period-filtered aggregates for top summary cards
