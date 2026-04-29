@@ -231,6 +231,7 @@ export const SettingsPage: React.FC = () => {
         { key: 'openai_api_key', value: formData.openai_api_key.trim() || null },
         { key: 'custom_categories', value: formData.custom_categories },
         { key: 'reflection_fields', value: reflectionFields },
+        { key: 'language', value: formData.language },
       ]
 
       for (const update of optionalUpdates) {
@@ -260,6 +261,8 @@ export const SettingsPage: React.FC = () => {
 
         updateSettings({
           ...fresh,
+          // Preserve language selection locally even if DB lacks it
+          language: formData.language,
           theme: fresh?.theme || formData.theme,
           openai_api_key: effectiveKey,
           reflection_fields: normalizeReflectionFields(fresh?.reflection_fields || reflectionFields),
@@ -467,7 +470,12 @@ export const SettingsPage: React.FC = () => {
                   </label>
                   <select
                     value={formData.language}
-                    onChange={(e) => setFormData({ ...formData, language: e.target.value as 'no' | 'en' | 'sv' })}
+                    onChange={(e) => {
+                      const lang = e.target.value as 'no' | 'en' | 'sv'
+                      setFormData({ ...formData, language: lang })
+                      // Apply immediately to the UI (persist to DB on Save separately)
+                      updateSettings({ language: lang })
+                    }}
                     className="input-base w-full max-w-xs"
                   >
                     {appLanguageOptions.map((option) => (
