@@ -231,7 +231,7 @@ export const SettingsPage: React.FC = () => {
         { key: 'openai_api_key', value: formData.openai_api_key.trim() || null },
         { key: 'custom_categories', value: formData.custom_categories },
         { key: 'reflection_fields', value: reflectionFields },
-        { key: 'language', value: formData.language },
+        // Do NOT attempt to persist language without a migration; keep it client-side.
       ]
 
       for (const update of optionalUpdates) {
