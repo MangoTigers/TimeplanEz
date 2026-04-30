@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import type { ReflectionFieldConfig } from '@/lib/reflections'
 // pdfjs-dist updated entry point for modern bundlers
-import * as pdfjsLib from 'pdfjs-dist/build/pdf'
+import pdfjsLib from 'pdfjs-dist/build/pdf'
 // Optional: set workerSrc if your environment can't load the default worker automatically
 // (pdfjsLib as any).GlobalWorkerOptions = (pdfjsLib as any).GlobalWorkerOptions || {};
 // (pdfjsLib as any).GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.worker.js`;
